@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GeoTIFF och fotokartgenerator</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <style>
     :root {
       color-scheme: light;
@@ -51,10 +50,144 @@
       background: var(--map-bg);
     }
 
-    #map {
+    .image-stage {
       width: 100%;
       height: 100%;
       min-height: 100vh;
+      overflow: auto;
+      padding: 42px;
+      background: var(--map-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+    }
+
+    .image-stage.dragging {
+      cursor: grabbing;
+    }
+
+    .image-surface {
+      position: relative;
+      flex: 0 0 auto;
+      background: #ffffff;
+      box-shadow: 0 8px 28px rgba(20, 31, 43, .18);
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+
+    .image-surface img {
+      display: block;
+      max-width: min(100%, calc(100vw - 430px));
+      max-height: calc(100vh - 84px);
+      width: auto;
+      height: auto;
+      object-fit: contain;
+    }
+
+    .image-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .image-photo {
+      position: absolute;
+      width: var(--marker-size, 56px);
+      height: var(--marker-size, 56px);
+      min-width: 0;
+      min-height: 0;
+      transform: translate(-50%, -100%);
+      border: 1px solid #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, .8), 0 3px 12px rgba(20, 31, 43, .35);
+      background: transparent;
+      cursor: pointer;
+      pointer-events: auto;
+      padding: 0;
+      overflow: visible;
+      z-index: 1;
+    }
+
+    .image-photo.open {
+      z-index: 1000;
+    }
+
+    .image-photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 7px;
+    }
+
+    .image-photo::after {
+      content: "";
+      position: absolute;
+      z-index: -2;
+      left: 50%;
+      bottom: -10px;
+      width: 0;
+      height: 0;
+      transform: translateX(-50%);
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-top: 9px solid rgba(0, 0, 0, .8);
+    }
+
+    .image-photo::before {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      left: 50%;
+      bottom: -9px;
+      width: 0;
+      height: 0;
+      transform: translateX(-50%);
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 8px solid #ffffff;
+    }
+
+    .image-popup {
+      position: absolute;
+      z-index: 1001;
+      left: 50%;
+      bottom: calc(var(--marker-size, 56px) + 12px);
+      width: min(280px, 70vw);
+      transform: translateX(-50%);
+      border: 1px solid #c7d0d8;
+      border-radius: 8px;
+      padding: 4px;
+      background: #ffffff;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, .8), 0 6px 24px rgba(20, 31, 43, .24);
+      display: none;
+    }
+
+    .image-photo.open .image-popup {
+      display: block;
+    }
+
+    .image-popup img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 5px;
+      background: #f1f4f6;
+    }
+
+    .image-popup b {
+      display: block;
+      margin-top: 5px;
+      color: #1f2933;
+      font-size: 13px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+
+    .image-popup span {
+      display: none;
     }
 
     h1 {
@@ -242,7 +375,7 @@
       position: relative;
       width: 56px;
       height: 56px;
-      border: 2px solid #ffffff;
+      border: 1px solid #ffffff;
       border-radius: 8px;
       box-shadow: 0 3px 12px rgba(20, 31, 43, .35);
       background: #ffffff;
@@ -264,8 +397,8 @@
       width: 12px;
       height: 12px;
       transform: translateX(-50%) rotate(45deg);
-      border-right: 2px solid #ffffff;
-      border-bottom: 2px solid #ffffff;
+      border-right: 1px solid #ffffff;
+      border-bottom: 1px solid #ffffff;
       background: #ffffff;
     }
 
@@ -303,6 +436,47 @@
       box-shadow: 0 5px 20px rgba(20, 31, 43, .12);
     }
 
+    .zoom-controls {
+      position: absolute;
+      z-index: 520;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid rgba(150, 163, 175, .55);
+      border-radius: 8px;
+      padding: 6px;
+      background: rgba(255, 255, 255, .94);
+      box-shadow: 0 5px 20px rgba(20, 31, 43, .12);
+    }
+
+    .zoom-controls button {
+      width: 34px;
+      height: 32px;
+      min-height: 32px;
+      padding: 0;
+      border-radius: 6px;
+      color: #263440;
+      border: 1px solid #b8c4ce;
+      background: #ffffff;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .zoom-controls button.fit {
+      width: auto;
+      padding: 0 10px;
+      font-size: 13px;
+    }
+
+    .zoom-value {
+      min-width: 48px;
+      text-align: center;
+      font-size: 13px;
+      color: #34424f;
+    }
+
     @media (max-width: 860px) {
       .app {
         grid-template-columns: 1fr;
@@ -314,8 +488,13 @@
       }
 
       .map-wrap,
-      #map {
+      .image-stage {
         min-height: 64vh;
+      }
+
+      .image-surface img {
+        max-width: calc(100vw - 84px);
+        max-height: calc(64vh - 84px);
       }
     }
   </style>
@@ -331,34 +510,43 @@
         <div class="field">
           <label for="geotiffInput">GeoTIFF-karta</label>
           <input type="file" id="geotiffInput" accept=".tif,.tiff,image/tiff">
-          <div class="hint">Om ingen GeoTIFF väljs används OpenStreetMap som bakgrund.</div>
+          <div class="hint">Kartan visas utan extern bakgrund, bara vald GeoTIFF och placerade foton.</div>
         </div>
         <div class="field">
           <label for="imageInput">GPS-märkta bilder</label>
           <input type="file" id="imageInput" multiple accept="image/*">
-          <div class="hint">Bilder utan GPS eller utanför GeoTIFF-kartans yta hoppas över.</div>
+          <div class="hint">Bilder utan GPS hoppas över. Du kan välja om bilder utanför GeoTIFF ska döljas.</div>
         </div>
       </section>
 
       <section class="section">
         <h2>Bildexport</h2>
+        <div class="field">
+          <label for="rasterResolution">Rasterkvalitet</label>
+          <select id="rasterResolution">
+            <option value="512" selected>Skarp</option>
+            <option value="768">Extra skarp</option>
+            <option value="256">Snabb</option>
+          </select>
+          <div class="hint">Högre kvalitet gör kartbilden skarpare men kan bli långsammare för stora GeoTIFF-filer.</div>
+        </div>
         <div class="row">
           <div class="field">
             <label for="maxSize">Maxsida, px</label>
             <input type="number" id="maxSize" min="320" max="2400" step="80" value="1280">
           </div>
           <div class="field">
-            <label for="thumbSize">Miniatyr, px</label>
-            <input type="number" id="thumbSize" min="40" max="120" step="4" value="60">
+            <label for="thumbSize">Miniatyrstorlek <span id="thumbSizeValue">56 px</span></label>
+            <input type="range" id="thumbSize" min="20" max="120" step="2" value="56">
           </div>
         </div>
         <div class="field">
           <label for="quality">WebP-kvalitet <span id="qualityValue">0.82</span></label>
           <input type="range" id="quality" min="0.45" max="0.95" step="0.01" value="0.82">
         </div>
-        <label class="check-row" for="includeRaster">
-          <input type="checkbox" id="includeRaster" checked>
-          Bädda in GeoTIFF i exporterad HTML
+        <label class="check-row" for="filterOutside">
+          <input type="checkbox" id="filterOutside">
+          Dölj bilder utanför GeoTIFF
         </label>
       </section>
 
@@ -383,26 +571,43 @@
     </aside>
 
     <section class="map-wrap">
-      <div id="map"></div>
+      <div class="image-stage" id="imageStage">
+        <div class="image-surface" id="imageSurface">
+          <img id="imageMap" alt="">
+          <div class="image-overlay" id="imageOverlay"></div>
+        </div>
+      </div>
+      <div class="zoom-controls" aria-label="Zoomkontroller">
+        <button type="button" id="zoomOutBtn" title="Zooma ut">-</button>
+        <span class="zoom-value" id="zoomValue">100%</span>
+        <button type="button" id="zoomInBtn" title="Zooma in">+</button>
+        <button type="button" class="fit" id="zoomResetBtn" title="Passa in kartbilden">Passa</button>
+      </div>
       <div class="map-badge" id="mapBadge">Välj en GeoTIFF och några GPS-märkta bilder för att börja.</div>
     </section>
   </main>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/proj4@2.11.0/dist/proj4.js"></script>
   <script src="https://unpkg.com/georaster"></script>
-  <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
   <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
   <script>
     const state = {
       geotiff: null,
       geotiffArrayBuffer: null,
       geotiffName: "",
-      rasterLayer: null,
+      imageDataUrl: "",
       photos: [],
       skipped: [],
-      markerLayer: null,
-      lineLayer: null
+      view: {
+        zoom: 1,
+        panX: 0,
+        panY: 0,
+        dragging: false,
+        dragStartX: 0,
+        dragStartY: 0,
+        startPanX: 0,
+        startPanY: 0
+      }
     };
 
     const els = {
@@ -412,35 +617,52 @@
       resetBtn: document.getElementById("resetBtn"),
       quality: document.getElementById("quality"),
       qualityValue: document.getElementById("qualityValue"),
+      rasterResolution: document.getElementById("rasterResolution"),
       maxSize: document.getElementById("maxSize"),
       thumbSize: document.getElementById("thumbSize"),
-      includeRaster: document.getElementById("includeRaster"),
+      thumbSizeValue: document.getElementById("thumbSizeValue"),
+      filterOutside: document.getElementById("filterOutside"),
       keptCount: document.getElementById("keptCount"),
       skippedCount: document.getElementById("skippedCount"),
       mapCount: document.getElementById("mapCount"),
       log: document.getElementById("log"),
-      mapBadge: document.getElementById("mapBadge")
+      mapBadge: document.getElementById("mapBadge"),
+      imageStage: document.getElementById("imageStage"),
+      imageSurface: document.getElementById("imageSurface"),
+      imageMap: document.getElementById("imageMap"),
+      imageOverlay: document.getElementById("imageOverlay"),
+      zoomInBtn: document.getElementById("zoomInBtn"),
+      zoomOutBtn: document.getElementById("zoomOutBtn"),
+      zoomResetBtn: document.getElementById("zoomResetBtn"),
+      zoomValue: document.getElementById("zoomValue")
     };
 
-    let map = null;
-    let osm = null;
-
     defineKnownProjections();
-
-    if (window.L) {
-      map = L.map("map", { preferCanvas: true }).setView([59.33, 18.06], 5);
-      osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "&copy; OpenStreetMap"
-      }).addTo(map);
-
-      state.markerLayer = L.layerGroup().addTo(map);
-      state.lineLayer = L.layerGroup().addTo(map);
-    }
 
     els.quality.addEventListener("input", () => {
       els.qualityValue.textContent = Number(els.quality.value).toFixed(2);
     });
-    els.includeRaster.addEventListener("change", updateUi);
+    els.thumbSize.addEventListener("input", () => {
+      updateMarkerSize();
+      renderPhotos();
+    });
+    els.filterOutside.addEventListener("change", () => {
+      filterPhotosByRasterBounds();
+      renderPhotos();
+      updateUi();
+    });
+    els.rasterResolution.addEventListener("change", rerenderGeoTiff);
+    els.zoomInBtn.addEventListener("click", () => zoomAtCenter(1.25));
+    els.zoomOutBtn.addEventListener("click", () => zoomAtCenter(0.8));
+    els.zoomResetBtn.addEventListener("click", resetView);
+    els.imageStage.addEventListener("wheel", handleWheel, { passive: false });
+    els.imageStage.addEventListener("pointerdown", startPan);
+    window.addEventListener("pointermove", movePan);
+    window.addEventListener("pointerup", endPan);
+    els.imageStage.addEventListener("dblclick", (event) => {
+      event.preventDefault();
+      zoomAtPoint(event.clientX, event.clientY, 1.8);
+    });
 
     els.geotiffInput.addEventListener("change", async (event) => {
       const file = event.target.files[0];
@@ -470,6 +692,7 @@
     });
 
     verifyLibraries();
+    updateMarkerSize();
 
     function addLog(message, type = "good") {
       const item = document.createElement("div");
@@ -480,9 +703,7 @@
 
     function verifyLibraries() {
       const missing = [];
-      if (!window.L) missing.push("Leaflet");
       if (!window.parseGeoraster) missing.push("georaster");
-      if (!window.GeoRasterLayer) missing.push("georaster-layer-for-leaflet");
       if (!window.EXIF) missing.push("exif-js");
 
       if (missing.length) {
@@ -517,54 +738,196 @@
     async function loadGeoTiff(file) {
       try {
         addLog(`Läser in ${file.name}...`, "good");
-        if (!map) {
-          throw new Error("Leaflet-kartan startade inte");
-        }
         const buffer = await file.arrayBuffer();
-        if (!window.parseGeoraster || !window.GeoRasterLayer) {
-          throw new Error("GeoTIFF-biblioteken laddades inte");
+        if (!window.parseGeoraster) {
+          throw new Error("GeoTIFF-biblioteket laddades inte");
         }
         const georaster = await parseGeoraster(buffer.slice(0));
         addLog(`GeoTIFF metadata: ${georaster.width}x${georaster.height}px, EPSG:${georaster.projection || "okänd"}.`, "good");
 
-        if (state.rasterLayer) {
-          map.removeLayer(state.rasterLayer);
-        }
-
-        state.rasterLayer = new GeoRasterLayer({
-          georaster,
-          opacity: 0.88,
-          resolution: 192
-        }).addTo(map);
-
         state.geotiff = georaster;
         state.geotiffArrayBuffer = buffer;
         state.geotiffName = file.name;
-        const rasterBounds = state.rasterLayer.getBounds();
-        if (!rasterBounds.isValid()) {
-          throw new Error("GeoTIFF saknar visningsbar geografisk utbredning");
-        }
-        addLog(`Kartans bounds: ${rasterBounds.getSouth().toFixed(5)}, ${rasterBounds.getWest().toFixed(5)} till ${rasterBounds.getNorth().toFixed(5)}, ${rasterBounds.getEast().toFixed(5)}.`, "good");
-        map.fitBounds(rasterBounds, { padding: [20, 20] });
+        await renderImageMap(georaster);
         filterPhotosByRasterBounds();
+        renderPhotos();
         addLog(`GeoTIFF klar: ${file.name}`, "good");
       } catch (error) {
         console.error(error);
         state.geotiff = null;
         state.geotiffArrayBuffer = null;
+        state.imageDataUrl = "";
         addLog(`Kunde inte läsa GeoTIFF: ${error.message || error}`, "bad");
       }
     }
 
-    function filterPhotosByRasterBounds() {
-      if (!state.rasterLayer || !state.photos.length) return;
+    async function rerenderGeoTiff() {
+      if (!state.geotiffArrayBuffer) return;
+      const fileName = state.geotiffName || "GeoTIFF";
+      addLog(`Renderar om ${fileName}...`, "good");
+      await loadGeoTiff(new File([state.geotiffArrayBuffer.slice(0)], fileName, { type: "image/tiff" }));
+      renderPhotos();
+      updateUi();
+    }
 
-      const rasterBounds = state.rasterLayer.getBounds();
+    async function renderImageMap(georaster) {
+      state.imageDataUrl = await georasterToImageDataUrl(georaster);
+      els.imageMap.src = state.imageDataUrl;
+      els.imageMap.style.aspectRatio = `${georaster.width} / ${georaster.height}`;
+      els.imageOverlay.innerHTML = "";
+      resetView();
+    }
+
+    function handleWheel(event) {
+      if (!state.imageDataUrl) return;
+      event.preventDefault();
+      const factor = event.deltaY < 0 ? 1.12 : 0.89;
+      zoomAtPoint(event.clientX, event.clientY, factor);
+    }
+
+    function zoomAtCenter(factor) {
+      const rect = els.imageStage.getBoundingClientRect();
+      zoomAtPoint(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+    }
+
+    function zoomAtPoint(clientX, clientY, factor) {
+      const oldZoom = state.view.zoom;
+      const newZoom = clamp(oldZoom * factor, 0.5, 6);
+      if (newZoom === oldZoom) return;
+
+      const surfaceRect = els.imageSurface.getBoundingClientRect();
+      const baseLeft = surfaceRect.left - state.view.panX;
+      const baseTop = surfaceRect.top - state.view.panY;
+      const localX = (clientX - surfaceRect.left) / oldZoom;
+      const localY = (clientY - surfaceRect.top) / oldZoom;
+
+      state.view.zoom = newZoom;
+      state.view.panX = clientX - baseLeft - localX * newZoom;
+      state.view.panY = clientY - baseTop - localY * newZoom;
+      applyImageTransform();
+    }
+
+    function startPan(event) {
+      if (!state.imageDataUrl || event.button !== 0 || event.target.closest(".image-photo")) return;
+      state.view.dragging = true;
+      state.view.dragStartX = event.clientX;
+      state.view.dragStartY = event.clientY;
+      state.view.startPanX = state.view.panX;
+      state.view.startPanY = state.view.panY;
+      els.imageStage.classList.add("dragging");
+      els.imageStage.setPointerCapture(event.pointerId);
+    }
+
+    function movePan(event) {
+      if (!state.view.dragging) return;
+      state.view.panX = state.view.startPanX + event.clientX - state.view.dragStartX;
+      state.view.panY = state.view.startPanY + event.clientY - state.view.dragStartY;
+      applyImageTransform();
+    }
+
+    function endPan() {
+      state.view.dragging = false;
+      els.imageStage.classList.remove("dragging");
+    }
+
+    function resetView() {
+      state.view.zoom = 1;
+      state.view.panX = 0;
+      state.view.panY = 0;
+      applyImageTransform();
+    }
+
+    function applyImageTransform() {
+      els.imageSurface.style.transform = `translate(${state.view.panX}px, ${state.view.panY}px) scale(${state.view.zoom})`;
+      els.zoomValue.textContent = `${Math.round(state.view.zoom * 100)}%`;
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    async function georasterToImageDataUrl(georaster) {
+      const maxCanvasSide = Math.min(3600, Number(els.rasterResolution.value) * 6 || 3072);
+      const scale = Math.min(1, maxCanvasSide / Math.max(georaster.width, georaster.height));
+      const width = Math.max(1, Math.round(georaster.width * scale));
+      const height = Math.max(1, Math.round(georaster.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      const imageData = ctx.createImageData(width, height);
+      const bands = georaster.values || [];
+      const noData = georaster.noDataValue;
+      const stats = getBandStats(bands);
+
+      for (let y = 0; y < height; y += 1) {
+        const sourceY = Math.min(georaster.height - 1, Math.floor(y / scale));
+        for (let x = 0; x < width; x += 1) {
+          const sourceX = Math.min(georaster.width - 1, Math.floor(x / scale));
+          const pixelIndex = (y * width + x) * 4;
+          const sample = sampleBands(bands, sourceY, sourceX);
+          if (!sample.length || sample.some((value) => value === noData || Number.isNaN(value))) {
+            imageData.data[pixelIndex + 3] = 0;
+            continue;
+          }
+
+          const rgb = sample.length >= 3
+            ? [normalizeBand(sample[0], stats[0]), normalizeBand(sample[1], stats[1]), normalizeBand(sample[2], stats[2])]
+            : grayToRgb(normalizeBand(sample[0], stats[0]));
+
+          imageData.data[pixelIndex] = rgb[0];
+          imageData.data[pixelIndex + 1] = rgb[1];
+          imageData.data[pixelIndex + 2] = rgb[2];
+          imageData.data[pixelIndex + 3] = 255;
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      return canvas.toDataURL("image/png");
+    }
+
+    function sampleBands(bands, y, x) {
+      return bands.map((band) => band && band[y] ? band[y][x] : undefined).filter((value) => typeof value === "number");
+    }
+
+    function getBandStats(bands) {
+      return bands.map((band) => {
+        let min = Infinity;
+        let max = -Infinity;
+        const rowStep = Math.max(1, Math.floor((band ? band.length : 0) / 240));
+        for (let y = 0; band && y < band.length; y += rowStep) {
+          const row = band[y];
+          const colStep = Math.max(1, Math.floor((row ? row.length : 0) / 240));
+          for (let x = 0; row && x < row.length; x += colStep) {
+            const value = row[x];
+            if (typeof value === "number" && Number.isFinite(value)) {
+              min = Math.min(min, value);
+              max = Math.max(max, value);
+            }
+          }
+        }
+        return Number.isFinite(min) && Number.isFinite(max) && max > min ? { min, max } : { min: 0, max: 255 };
+      });
+    }
+
+    function normalizeBand(value, stat) {
+      if (value >= 0 && value <= 255 && stat.max <= 255) return Math.round(value);
+      return Math.max(0, Math.min(255, Math.round(((value - stat.min) / (stat.max - stat.min)) * 255)));
+    }
+
+    function grayToRgb(value) {
+      return [value, value, value];
+    }
+
+    function filterPhotosByRasterBounds() {
+      if (!els.filterOutside.checked) return;
+      if (!state.geotiff || !state.photos.length) return;
+
       const kept = [];
       let removed = 0;
 
       state.photos.forEach((photo) => {
-        if (rasterBounds.contains([photo.lat, photo.lon])) {
+        if (photoToImagePoint(photo)) {
           kept.push(photo);
         } else {
           removed += 1;
@@ -589,7 +952,7 @@
       addLog(`Bearbetar ${files.length} bild(er)...`, "good");
       const quality = Number(els.quality.value);
       const maxSize = Number(els.maxSize.value);
-      const thumbSize = Number(els.thumbSize.value);
+      const thumbSize = Math.max(160, Number(els.thumbSize.value) * 2);
 
       for (const file of files) {
         try {
@@ -599,9 +962,11 @@
             continue;
           }
 
-          if (state.rasterLayer && !state.rasterLayer.getBounds().contains([gps.lat, gps.lon])) {
-            state.skipped.push({ name: file.name, reason: "utanför GeoTIFF-kartan" });
-            continue;
+          if (els.filterOutside.checked && state.geotiff) {
+            if (!photoToImagePoint(gps)) {
+              state.skipped.push({ name: file.name, reason: "utanför GeoTIFF-kartan" });
+              continue;
+            }
           }
 
           const image = await compressImage(file, maxSize, quality);
@@ -693,81 +1058,75 @@
     }
 
     function renderPhotos() {
-      if (!map || !state.markerLayer || !state.lineLayer) return;
-      state.markerLayer.clearLayers();
-      state.lineLayer.clearLayers();
-
+      els.imageOverlay.innerHTML = "";
       const placed = computeDisplayPositions(state.photos);
-      const bounds = [];
 
       placed.forEach((photo) => {
-        const icon = L.divIcon({
-          html: `<div class="thumb-marker"><img alt="" src="${photo.thumb}"></div>`,
-          className: "",
-          iconSize: [56, 64],
-          iconAnchor: [28, 64],
-          popupAnchor: [0, -62]
+        const aspect = state.geotiff ? state.geotiff.width / state.geotiff.height : 1;
+        const marker = document.createElement("button");
+        marker.type = "button";
+        marker.className = "image-photo";
+        marker.style.left = `${(photo.displayLon / aspect) * 100}%`;
+        marker.style.top = `${(1 - photo.displayLat) * 100}%`;
+        marker.setAttribute("aria-label", photo.name);
+
+        const thumb = document.createElement("img");
+        thumb.src = photo.thumb;
+        thumb.alt = "";
+        marker.appendChild(thumb);
+
+        const popup = document.createElement("div");
+        popup.className = "image-popup";
+        popup.innerHTML = `<img src="${photo.src}" alt=""><b>${escapeHtml(photo.name)}</b><span>${photo.lat.toFixed(6)}, ${photo.lon.toFixed(6)}</span>`;
+        marker.appendChild(popup);
+
+        marker.addEventListener("click", () => {
+          els.imageOverlay.querySelectorAll(".image-photo.open").forEach((openMarker) => {
+            if (openMarker !== marker) openMarker.classList.remove("open");
+          });
+          marker.classList.toggle("open");
         });
 
-        L.marker([photo.displayLat, photo.displayLon], { icon })
-          .bindPopup(`<div class="photo-popup"><img src="${photo.src}" alt=""><b>${escapeHtml(photo.name)}</b><span>${photo.lat.toFixed(6)}, ${photo.lon.toFixed(6)}</span></div>`)
-          .addTo(state.markerLayer);
-
-        if (photo.displayLat !== photo.lat || photo.displayLon !== photo.lon) {
-          L.circleMarker([photo.lat, photo.lon], {
-            radius: 3,
-            color: "#0b6f6a",
-            weight: 2,
-            fillColor: "#ffffff",
-            fillOpacity: 1
-          }).addTo(state.lineLayer);
-
-          L.polyline([[photo.lat, photo.lon], [photo.displayLat, photo.displayLon]], {
-            color: "#0b6f6a",
-            weight: 1,
-            dashArray: "4 4",
-            opacity: 0.85
-          }).addTo(state.lineLayer);
-        }
-
-        bounds.push([photo.lat, photo.lon]);
-        bounds.push([photo.displayLat, photo.displayLon]);
+        els.imageOverlay.appendChild(marker);
       });
+    }
 
-      if (bounds.length && !state.rasterLayer) {
-        map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
-      }
+    function updateMarkerSize() {
+      const size = Number(els.thumbSize.value) || 56;
+      els.imageOverlay.style.setProperty("--marker-size", `${size}px`);
+      els.thumbSizeValue.textContent = `${size} px`;
     }
 
     function computeDisplayPositions(photos) {
       const groups = new Map();
-      const rounded = 5;
+      const rounded = 4;
 
       photos.forEach((photo) => {
-        const key = `${photo.lat.toFixed(rounded)},${photo.lon.toFixed(rounded)}`;
+        const point = getPhotoMapPoint(photo);
+        if (!point) return;
+        const mapped = { ...photo, exactLat: point.lat, exactLon: point.lon };
+        const key = `${point.lat.toFixed(rounded)},${point.lon.toFixed(rounded)}`;
         if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(photo);
+        groups.get(key).push(mapped);
       });
 
-      const metersPerDegreeLat = 111320;
       const result = [];
 
       groups.forEach((group) => {
         if (group.length === 1) {
-          result.push({ ...group[0], displayLat: group[0].lat, displayLon: group[0].lon });
+          result.push({ ...group[0], displayLat: group[0].exactLat, displayLon: group[0].exactLon });
           return;
         }
 
-        const radiusMeters = Math.min(80, 18 + group.length * 8);
+        const imageRadius = Math.min(0.035, 0.012 + group.length * 0.004);
         group.forEach((photo, index) => {
           const angle = (Math.PI * 2 * index) / group.length;
-          const latOffset = (Math.sin(angle) * radiusMeters) / metersPerDegreeLat;
-          const lonScale = Math.max(0.2, Math.cos(photo.lat * Math.PI / 180));
-          const lonOffset = (Math.cos(angle) * radiusMeters) / (metersPerDegreeLat * lonScale);
+          const latOffset = Math.sin(angle) * imageRadius;
+          const lonOffset = Math.cos(angle) * imageRadius;
           result.push({
             ...photo,
-            displayLat: photo.lat + latOffset,
-            displayLon: photo.lon + lonOffset
+            displayLat: photo.exactLat + latOffset,
+            displayLon: photo.exactLon + lonOffset
           });
         });
       });
@@ -775,13 +1134,46 @@
       return result;
     }
 
+    function getPhotoMapPoint(photo) {
+      return photoToImagePoint(photo);
+    }
+
+    function photoToImagePoint(photo) {
+      if (!state.geotiff || !window.proj4) return null;
+      const projection = state.geotiff.projection || 4326;
+      let projected;
+      try {
+        projected = Number(projection) === 4326
+          ? [photo.lon, photo.lat]
+          : proj4("EPSG:4326", `EPSG:${projection}`, [photo.lon, photo.lat]);
+      } catch (error) {
+        return null;
+      }
+
+      const xmin = state.geotiff.xmin;
+      const xmax = state.geotiff.xmax;
+      const ymin = state.geotiff.ymin;
+      const ymax = state.geotiff.ymax;
+      if (![xmin, xmax, ymin, ymax].every(Number.isFinite)) return null;
+
+      const xRatio = (projected[0] - xmin) / (xmax - xmin);
+      const yRatio = (ymax - projected[1]) / (ymax - ymin);
+      if (xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1) return null;
+
+      const aspect = state.geotiff.width / state.geotiff.height;
+      return {
+        lat: 1 - yRatio,
+        lon: xRatio * aspect
+      };
+    }
+
     function updateUi() {
       els.keptCount.textContent = state.photos.length;
       els.skippedCount.textContent = state.skipped.length;
-      els.mapCount.textContent = state.rasterLayer ? "1" : "0";
-      els.downloadBtn.disabled = !state.photos.length && !(state.geotiffArrayBuffer && els.includeRaster.checked);
+      els.mapCount.textContent = state.imageDataUrl ? "1" : "0";
+      els.downloadBtn.disabled = !state.imageDataUrl && !state.photos.length;
 
-      const mapText = state.rasterLayer ? `GeoTIFF: ${state.geotiffName}` : "OpenStreetMap används som bakgrund.";
+      const mapText = state.imageDataUrl ? `GeoTIFF: ${state.geotiffName}` : "Ingen kartbild visas.";
       const photoText = state.photos.length ? `${state.photos.length} foton placerade.` : "Inga foton placerade ännu.";
       els.mapBadge.textContent = `${mapText} ${photoText}`;
 
@@ -792,36 +1184,34 @@
     }
 
     function resetAll() {
-      if (state.rasterLayer && map) map.removeLayer(state.rasterLayer);
       state.geotiff = null;
       state.geotiffArrayBuffer = null;
       state.geotiffName = "";
-      state.rasterLayer = null;
+      state.imageDataUrl = "";
       state.photos = [];
       state.skipped = [];
-      if (state.markerLayer) state.markerLayer.clearLayers();
-      if (state.lineLayer) state.lineLayer.clearLayers();
+      els.imageMap.removeAttribute("src");
+      els.imageOverlay.innerHTML = "";
       els.geotiffInput.value = "";
       els.imageInput.value = "";
       els.log.innerHTML = "";
-      if (map) map.setView([59.33, 18.06], 5);
       updateUi();
       addLog("Allt rensat.", "good");
     }
 
     async function downloadStandaloneHtml() {
-      const rasterBase64 = state.geotiffArrayBuffer && els.includeRaster.checked
-        ? arrayBufferToBase64(state.geotiffArrayBuffer)
-        : "";
-
       const payload = {
         exportedAt: new Date().toISOString(),
         geotiffName: state.geotiffName,
-        rasterBase64,
+        rasterResolution: Number(els.rasterResolution.value) || 512,
+        markerSize: Number(els.thumbSize.value) || 56,
+        imageDataUrl: state.imageDataUrl,
+        imageAspect: state.geotiff ? state.geotiff.width / state.geotiff.height : 1,
+        imagePhotos: computeDisplayPositions(state.photos),
         photos: state.photos
       };
 
-      const html = buildStandaloneHtml(payload);
+      const html = buildStandaloneImageHtml(payload);
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -832,64 +1222,7 @@
       addLog("Exporterade interaktiv_fotokarta.html.", "good");
     }
 
-    function arrayBufferToBase64(buffer) {
-      const bytes = new Uint8Array(buffer);
-      let binary = "";
-      const chunkSize = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
-      }
-      return btoa(binary);
-    }
-
-    function escapeHtml(value) {
-      return String(value).replace(/[&<>"']/g, (char) => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#039;"
-      }[char]));
-    }
-
-    function buildStandaloneHtml(payload) {
-      const safePayload = JSON.stringify(payload).replace(/</g, "\\u003c");
-      const css = [
-        "html,body,#map{width:100%;height:100%;margin:0}",
-        "body{font-family:Arial,Helvetica,sans-serif}",
-        ".thumb-marker{position:relative;width:56px;height:56px;border:2px solid #fff;border-radius:8px;box-shadow:0 3px 12px rgba(20,31,43,.35);background:#fff;overflow:hidden}",
-        ".thumb-marker img{width:100%;height:100%;object-fit:cover;display:block}",
-        ".thumb-marker:after{content:\"\";position:absolute;left:50%;bottom:-7px;width:12px;height:12px;transform:translateX(-50%) rotate(45deg);border-right:2px solid #fff;border-bottom:2px solid #fff;background:#fff}",
-        ".photo-popup{width:min(300px,72vw)}",
-        ".photo-popup img{display:block;width:100%;max-height:280px;object-fit:contain;border-radius:6px;background:#f1f4f6}",
-        ".photo-popup b{display:block;margin-top:8px;overflow-wrap:anywhere}",
-        ".badge{position:absolute;z-index:500;left:12px;bottom:12px;max-width:min(520px,calc(100% - 24px));border:1px solid rgba(150,163,175,.55);border-radius:8px;padding:8px 10px;background:rgba(255,255,255,.92);color:#34424f;font-size:13px;box-shadow:0 5px 20px rgba(20,31,43,.12)}"
-      ].join("\n");
-      const js = [
-        `const payload=${safePayload};`,
-        "defineKnownProjections();",
-        "const map=L.map('map',{preferCanvas:true}).setView([59.33,18.06],5);",
-        "L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);",
-        "const markers=L.layerGroup().addTo(map);",
-        "const lines=L.layerGroup().addTo(map);",
-        "const bounds=[];",
-        "start();",
-        "async function start(){",
-        "if(payload.rasterBase64){try{const layer=new GeoRasterLayer({georaster:await parseGeoraster(base64ToArrayBuffer(payload.rasterBase64)),opacity:.88,resolution:192}).addTo(map);map.fitBounds(layer.getBounds(),{padding:[20,20]});}catch(error){console.error(error);}}",
-        "computeDisplayPositions(payload.photos||[]).forEach(function(photo){",
-        "const icon=L.divIcon({html:'<div class=\"thumb-marker\"><img alt=\"\" src=\"'+photo.thumb+'\"></div>',className:'',iconSize:[56,64],iconAnchor:[28,64],popupAnchor:[0,-62]});",
-        "L.marker([photo.displayLat,photo.displayLon],{icon:icon}).bindPopup('<div class=\"photo-popup\"><img src=\"'+photo.src+'\" alt=\"\"><b>'+escapeHtml(photo.name)+'</b><span>'+photo.lat.toFixed(6)+', '+photo.lon.toFixed(6)+'</span></div>').addTo(markers);",
-        "if(photo.displayLat!==photo.lat||photo.displayLon!==photo.lon){L.circleMarker([photo.lat,photo.lon],{radius:3,color:'#0b6f6a',weight:2,fillColor:'#ffffff',fillOpacity:1}).addTo(lines);L.polyline([[photo.lat,photo.lon],[photo.displayLat,photo.displayLon]],{color:'#0b6f6a',weight:1,dashArray:'4 4',opacity:.85}).addTo(lines);}",
-        "bounds.push([photo.lat,photo.lon],[photo.displayLat,photo.displayLon]);",
-        "});",
-        "if(bounds.length&&!payload.rasterBase64)map.fitBounds(bounds,{padding:[30,30],maxZoom:17});",
-        "document.getElementById('badge').textContent=(payload.geotiffName?'GeoTIFF: '+payload.geotiffName+'. ':'OpenStreetMap. ')+(payload.photos||[]).length+' foton.';",
-        "}",
-        "function computeDisplayPositions(photos){const groups=new Map();photos.forEach(function(photo){const key=photo.lat.toFixed(5)+','+photo.lon.toFixed(5);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(photo);});const result=[];groups.forEach(function(group){if(group.length===1){result.push(Object.assign({},group[0],{displayLat:group[0].lat,displayLon:group[0].lon}));return;}const radiusMeters=Math.min(80,18+group.length*8);group.forEach(function(photo,index){const angle=Math.PI*2*index/group.length;const latOffset=Math.sin(angle)*radiusMeters/111320;const lonOffset=Math.cos(angle)*radiusMeters/(111320*Math.max(.2,Math.cos(photo.lat*Math.PI/180)));result.push(Object.assign({},photo,{displayLat:photo.lat+latOffset,displayLon:photo.lon+lonOffset}));});});return result;}",
-        "function base64ToArrayBuffer(base64){const binary=atob(base64);const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i+=1)bytes[i]=binary.charCodeAt(i);return bytes.buffer;}",
-        "function defineKnownProjections(){if(!window.proj4)return;proj4.defs('EPSG:3006','+proj=utm +zone=33 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3011','+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3012','+proj=tmerc +lat_0=0 +lon_0=13.5 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3013','+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3014','+proj=tmerc +lat_0=0 +lon_0=16.5 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3015','+proj=tmerc +lat_0=0 +lon_0=18 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3016','+proj=tmerc +lat_0=0 +lon_0=20.25 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3017','+proj=tmerc +lat_0=0 +lon_0=21.75 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3018','+proj=tmerc +lat_0=0 +lon_0=23.25 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');}",
-        "function escapeHtml(value){return String(value).replace(/[&<>\"']/g,function(char){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#039;'}[char];});}"
-      ].join("\n");
+    function buildStandaloneImageHtml(payload) {
       const doc = document.implementation.createHTMLDocument("Interaktiv fotokarta");
       doc.documentElement.lang = "sv";
 
@@ -902,41 +1235,101 @@
       metaViewport.content = "width=device-width, initial-scale=1.0";
       doc.head.appendChild(metaViewport);
 
-      const leafletCss = doc.createElement("link");
-      leafletCss.rel = "stylesheet";
-      leafletCss.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-      doc.head.appendChild(leafletCss);
-
       const style = doc.createElement("style");
-      style.textContent = css;
+      style.textContent = [
+        "html,body{margin:0;min-height:100%;font-family:Arial,Helvetica,sans-serif;background:#e8edf1;color:#1f2933}",
+        ".stage{min-height:100vh;overflow:auto;padding:42px;display:flex;align-items:center;justify-content:center;cursor:grab;user-select:none;touch-action:none}",
+        ".stage.dragging{cursor:grabbing}",
+        ".surface{position:relative;flex:0 0 auto;background:#fff;box-shadow:0 8px 28px rgba(20,31,43,.18);transform-origin:0 0;will-change:transform}",
+        ".surface>img{display:block;max-width:calc(100vw - 84px);max-height:calc(100vh - 84px);width:auto;height:auto;object-fit:contain}",
+        ".overlay{position:absolute;inset:0;pointer-events:none}",
+        ".marker{position:absolute;width:var(--marker-size,56px);height:var(--marker-size,56px);min-width:0;min-height:0;transform:translate(-50%,-100%);border:1px solid #fff;border-radius:8px;box-shadow:0 0 0 1px rgba(0,0,0,.8),0 3px 12px rgba(20,31,43,.35);background:transparent;cursor:pointer;pointer-events:auto;padding:0;overflow:visible;z-index:1}",
+        ".marker.open{z-index:1000}",
+        ".marker>img{width:100%;height:100%;object-fit:cover;border-radius:7px}",
+        ".marker:after{content:\"\";position:absolute;z-index:-2;left:50%;bottom:-10px;width:0;height:0;transform:translateX(-50%);border-left:8px solid transparent;border-right:8px solid transparent;border-top:9px solid rgba(0,0,0,.8)}",
+        ".marker:before{content:\"\";position:absolute;z-index:-1;left:50%;bottom:-9px;width:0;height:0;transform:translateX(-50%);border-left:7px solid transparent;border-right:7px solid transparent;border-top:8px solid #fff}",
+        ".popup{position:absolute;z-index:1001;left:50%;bottom:calc(var(--marker-size,56px) + 12px);width:min(280px,70vw);transform:translateX(-50%);border:1px solid #c7d0d8;border-radius:8px;padding:4px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.8),0 6px 24px rgba(20,31,43,.24);display:none}",
+        ".marker.open .popup{display:block}",
+        ".popup img{display:block;width:100%;height:auto;border-radius:5px;background:#f1f4f6}",
+        ".popup b{display:block;margin-top:5px;color:#1f2933;font-size:13px;line-height:1.25;overflow-wrap:anywhere}",
+        ".popup span{display:none}",
+        ".badge{position:fixed;left:12px;bottom:12px;max-width:min(520px,calc(100% - 24px));border:1px solid rgba(150,163,175,.55);border-radius:8px;padding:8px 10px;background:rgba(255,255,255,.92);font-size:13px;box-shadow:0 5px 20px rgba(20,31,43,.12)}",
+        ".zoom{position:fixed;z-index:20;top:12px;right:12px;display:flex;align-items:center;gap:6px;border:1px solid rgba(150,163,175,.55);border-radius:8px;padding:6px;background:rgba(255,255,255,.94);box-shadow:0 5px 20px rgba(20,31,43,.12)}",
+        ".zoom button{height:32px;border-radius:6px;color:#263440;border:1px solid #b8c4ce;background:#fff;font-weight:700;cursor:pointer}",
+        ".zoom .square{width:34px;font-size:18px;line-height:1}",
+        ".zoom .value{min-width:48px;text-align:center;font-size:13px;color:#34424f}"
+      ].join("\n");
       doc.head.appendChild(style);
 
-      const mapEl = doc.createElement("div");
-      mapEl.id = "map";
-      doc.body.appendChild(mapEl);
+      const stage = doc.createElement("main");
+      stage.className = "stage";
+      const surface = doc.createElement("div");
+      surface.className = "surface";
+      surface.style.setProperty("--marker-size", `${payload.markerSize || 56}px`);
+      const image = doc.createElement("img");
+      image.src = payload.imageDataUrl;
+      image.alt = "";
+      const overlay = doc.createElement("div");
+      overlay.className = "overlay";
+      surface.appendChild(image);
+      surface.appendChild(overlay);
+      stage.appendChild(surface);
+      doc.body.appendChild(stage);
+
+      const aspect = payload.imageAspect || 1;
+      payload.imagePhotos.forEach((photo) => {
+        const marker = doc.createElement("button");
+        marker.type = "button";
+        marker.className = "marker";
+        marker.style.left = `${(photo.displayLon / aspect) * 100}%`;
+        marker.style.top = `${(1 - photo.displayLat) * 100}%`;
+        marker.setAttribute("aria-label", photo.name);
+        marker.innerHTML = `<img src="${photo.thumb}" alt=""><div class="popup"><img src="${photo.src}" alt=""><b>${escapeHtml(photo.name)}</b><span>${photo.lat.toFixed(6)}, ${photo.lon.toFixed(6)}</span></div>`;
+        overlay.appendChild(marker);
+      });
 
       const badge = doc.createElement("div");
       badge.className = "badge";
-      badge.id = "badge";
-      badge.textContent = "Laddar karta...";
+      badge.textContent = `${payload.geotiffName || "GeoTIFF"} · ${payload.imagePhotos.length} foton`;
       doc.body.appendChild(badge);
 
-      [
-        "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
-        "https://unpkg.com/proj4@2.11.0/dist/proj4.js",
-        "https://unpkg.com/georaster",
-        "https://unpkg.com/georaster-layer-for-leaflet"
-      ].forEach((src) => {
-        const script = doc.createElement("script");
-        script.src = src;
-        doc.body.appendChild(script);
-      });
+      const zoomControls = doc.createElement("div");
+      zoomControls.className = "zoom";
+      zoomControls.innerHTML = '<button type="button" class="square" id="out">-</button><span class="value" id="value">100%</span><button type="button" class="square" id="in">+</button><button type="button" id="fit">Passa</button>';
+      doc.body.appendChild(zoomControls);
 
-      const appScript = doc.createElement("script");
-      appScript.textContent = js;
-      doc.body.appendChild(appScript);
+      const script = doc.createElement("script");
+      script.textContent = [
+        "var stage=document.querySelector('.stage'),surface=document.querySelector('.surface'),value=document.getElementById('value');",
+        "var view={zoom:1,panX:0,panY:0,dragging:false,dragStartX:0,dragStartY:0,startPanX:0,startPanY:0};",
+        "function clamp(v,min,max){return Math.min(max,Math.max(min,v));}",
+        "function apply(){surface.style.transform='translate('+view.panX+'px, '+view.panY+'px) scale('+view.zoom+')';value.textContent=Math.round(view.zoom*100)+'%';}",
+        "function zoomAt(x,y,factor){var old=view.zoom,next=clamp(old*factor,.5,6);if(next===old)return;var rect=surface.getBoundingClientRect();var baseLeft=rect.left-view.panX,baseTop=rect.top-view.panY;var localX=(x-rect.left)/old,localY=(y-rect.top)/old;view.zoom=next;view.panX=x-baseLeft-localX*next;view.panY=y-baseTop-localY*next;apply();}",
+        "function zoomCenter(factor){var rect=stage.getBoundingClientRect();zoomAt(rect.left+rect.width/2,rect.top+rect.height/2,factor);}",
+        "stage.addEventListener('wheel',function(event){event.preventDefault();zoomAt(event.clientX,event.clientY,event.deltaY<0?1.12:.89);},{passive:false});",
+        "stage.addEventListener('pointerdown',function(event){if(event.button!==0||event.target.closest('.marker'))return;view.dragging=true;view.dragStartX=event.clientX;view.dragStartY=event.clientY;view.startPanX=view.panX;view.startPanY=view.panY;stage.classList.add('dragging');stage.setPointerCapture(event.pointerId);});",
+        "window.addEventListener('pointermove',function(event){if(!view.dragging)return;view.panX=view.startPanX+event.clientX-view.dragStartX;view.panY=view.startPanY+event.clientY-view.dragStartY;apply();});",
+        "window.addEventListener('pointerup',function(){view.dragging=false;stage.classList.remove('dragging');});",
+        "stage.addEventListener('dblclick',function(event){event.preventDefault();zoomAt(event.clientX,event.clientY,1.8);});",
+        "document.getElementById('in').addEventListener('click',function(){zoomCenter(1.25);});",
+        "document.getElementById('out').addEventListener('click',function(){zoomCenter(.8);});",
+        "document.getElementById('fit').addEventListener('click',function(){view.zoom=1;view.panX=0;view.panY=0;apply();});",
+        "document.addEventListener('click',function(event){var marker=event.target.closest('.marker');document.querySelectorAll('.marker.open').forEach(function(open){if(open!==marker)open.classList.remove('open');});if(marker)marker.classList.toggle('open');});",
+        "apply();"
+      ].join("");
+      doc.body.appendChild(script);
 
       return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      }[char]));
     }
 
     updateUi();
