@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GeoTIFF och fotokartgenerator</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1f2933;
+      --muted: #687582;
+      --line: #d8dee4;
+      --panel: #f7f9fb;
+      --accent: #0b6f6a;
+      --accent-dark: #07534f;
+      --warn: #9b5d00;
+      --bad: #a33a2f;
+      --good: #177245;
+      --map-bg: #e8edf1;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--ink);
+      background: #ffffff;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: minmax(320px, 390px) minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line);
+      background: var(--panel);
+      padding: 18px;
+      overflow-y: auto;
+    }
+
+    .map-wrap {
+      position: relative;
+      min-height: 100vh;
+      background: var(--map-bg);
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      min-height: 100vh;
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 24px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    .lede {
+      margin: 0 0 18px;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 14px;
+    }
+
+    .section {
+      padding: 14px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .section:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .section h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #34424f;
+    }
+
+    label {
+      display: block;
+      margin: 0 0 7px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    input[type="file"],
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid #c7d0d8;
+      border-radius: 6px;
+      padding: 8px;
+      background: #ffffff;
+      color: var(--ink);
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    .field {
+      margin-bottom: 12px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .check-row {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-top: 8px;
+      font-size: 14px;
+      color: #34424f;
+    }
+
+    .check-row input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+    }
+
+    .hint {
+      margin-top: 6px;
+      font-size: 12px;
+      line-height: 1.35;
+      color: var(--muted);
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    button {
+      min-height: 40px;
+      border: 0;
+      border-radius: 6px;
+      padding: 9px 12px;
+      font-weight: 700;
+      color: #ffffff;
+      background: var(--accent);
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) {
+      background: var(--accent-dark);
+    }
+
+    button.secondary {
+      color: #263440;
+      border: 1px solid #b8c4ce;
+      background: #ffffff;
+    }
+
+    button.secondary:hover:not(:disabled) {
+      background: #eef3f6;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      color: #73808b;
+      background: #d6dde3;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 10px;
+      min-width: 0;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .stat span {
+      display: block;
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .log {
+      display: grid;
+      gap: 7px;
+      max-height: 210px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .log-item {
+      border-left: 3px solid #b8c4ce;
+      background: #ffffff;
+      padding: 8px 10px;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .log-item.good {
+      border-left-color: var(--good);
+    }
+
+    .log-item.warn {
+      border-left-color: var(--warn);
+    }
+
+    .log-item.bad {
+      border-left-color: var(--bad);
+    }
+
+    .thumb-marker {
+      position: relative;
+      width: 56px;
+      height: 56px;
+      border: 2px solid #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 3px 12px rgba(20, 31, 43, .35);
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    .thumb-marker img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .thumb-marker::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -7px;
+      width: 12px;
+      height: 12px;
+      transform: translateX(-50%) rotate(45deg);
+      border-right: 2px solid #ffffff;
+      border-bottom: 2px solid #ffffff;
+      background: #ffffff;
+    }
+
+    .photo-popup {
+      width: min(280px, 70vw);
+    }
+
+    .photo-popup img {
+      display: block;
+      width: 100%;
+      max-height: 260px;
+      object-fit: contain;
+      border-radius: 6px;
+      background: #f1f4f6;
+    }
+
+    .photo-popup b {
+      display: block;
+      margin-top: 8px;
+      overflow-wrap: anywhere;
+    }
+
+    .map-badge {
+      position: absolute;
+      z-index: 500;
+      left: 12px;
+      bottom: 12px;
+      max-width: min(520px, calc(100% - 24px));
+      border: 1px solid rgba(150, 163, 175, .55);
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: rgba(255, 255, 255, .92);
+      color: #34424f;
+      font-size: 13px;
+      box-shadow: 0 5px 20px rgba(20, 31, 43, .12);
+    }
+
+    @media (max-width: 860px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .map-wrap,
+      #map {
+        min-height: 64vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <aside class="sidebar">
+      <h1>Fotokartgenerator</h1>
+      <p class="lede">Skapa en fristående HTML-karta från en lokal GeoTIFF och GPS-märkta foton. All bearbetning sker i webbläsaren.</p>
+
+      <section class="section">
+        <h2>Inläsning</h2>
+        <div class="field">
+          <label for="geotiffInput">GeoTIFF-karta</label>
+          <input type="file" id="geotiffInput" accept=".tif,.tiff,image/tiff">
+          <div class="hint">Om ingen GeoTIFF väljs används OpenStreetMap som bakgrund.</div>
+        </div>
+        <div class="field">
+          <label for="imageInput">GPS-märkta bilder</label>
+          <input type="file" id="imageInput" multiple accept="image/*">
+          <div class="hint">Bilder utan GPS eller utanför GeoTIFF-kartans yta hoppas över.</div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Bildexport</h2>
+        <div class="row">
+          <div class="field">
+            <label for="maxSize">Maxsida, px</label>
+            <input type="number" id="maxSize" min="320" max="2400" step="80" value="1280">
+          </div>
+          <div class="field">
+            <label for="thumbSize">Miniatyr, px</label>
+            <input type="number" id="thumbSize" min="40" max="120" step="4" value="60">
+          </div>
+        </div>
+        <div class="field">
+          <label for="quality">WebP-kvalitet <span id="qualityValue">0.82</span></label>
+          <input type="range" id="quality" min="0.45" max="0.95" step="0.01" value="0.82">
+        </div>
+        <label class="check-row" for="includeRaster">
+          <input type="checkbox" id="includeRaster" checked>
+          Bädda in GeoTIFF i exporterad HTML
+        </label>
+      </section>
+
+      <section class="section">
+        <h2>Status</h2>
+        <div class="stats">
+          <div class="stat"><strong id="keptCount">0</strong><span>placerade</span></div>
+          <div class="stat"><strong id="skippedCount">0</strong><span>ignorerade</span></div>
+          <div class="stat"><strong id="mapCount">0</strong><span>kartlager</span></div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Händelser</h2>
+        <div class="log" id="log"></div>
+      </section>
+
+      <div class="actions">
+        <button id="downloadBtn" disabled>Ladda ner HTML</button>
+        <button class="secondary" id="resetBtn">Rensa</button>
+      </div>
+    </aside>
+
+    <section class="map-wrap">
+      <div id="map"></div>
+      <div class="map-badge" id="mapBadge">Välj en GeoTIFF och några GPS-märkta bilder för att börja.</div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/proj4@2.11.0/dist/proj4.js"></script>
+  <script src="https://unpkg.com/georaster"></script>
+  <script src="https://unpkg.com/georaster-layer-for-leaflet"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+  <script>
+    const state = {
+      geotiff: null,
+      geotiffArrayBuffer: null,
+      geotiffName: "",
+      rasterLayer: null,
+      photos: [],
+      skipped: [],
+      markerLayer: null,
+      lineLayer: null
+    };
+
+    const els = {
+      geotiffInput: document.getElementById("geotiffInput"),
+      imageInput: document.getElementById("imageInput"),
+      downloadBtn: document.getElementById("downloadBtn"),
+      resetBtn: document.getElementById("resetBtn"),
+      quality: document.getElementById("quality"),
+      qualityValue: document.getElementById("qualityValue"),
+      maxSize: document.getElementById("maxSize"),
+      thumbSize: document.getElementById("thumbSize"),
+      includeRaster: document.getElementById("includeRaster"),
+      keptCount: document.getElementById("keptCount"),
+      skippedCount: document.getElementById("skippedCount"),
+      mapCount: document.getElementById("mapCount"),
+      log: document.getElementById("log"),
+      mapBadge: document.getElementById("mapBadge")
+    };
+
+    let map = null;
+    let osm = null;
+
+    defineKnownProjections();
+
+    if (window.L) {
+      map = L.map("map", { preferCanvas: true }).setView([59.33, 18.06], 5);
+      osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap"
+      }).addTo(map);
+
+      state.markerLayer = L.layerGroup().addTo(map);
+      state.lineLayer = L.layerGroup().addTo(map);
+    }
+
+    els.quality.addEventListener("input", () => {
+      els.qualityValue.textContent = Number(els.quality.value).toFixed(2);
+    });
+    els.includeRaster.addEventListener("change", updateUi);
+
+    els.geotiffInput.addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+      await loadGeoTiff(file);
+      renderPhotos();
+      updateUi();
+    });
+
+    els.imageInput.addEventListener("change", async (event) => {
+      const files = Array.from(event.target.files || []);
+      await loadPhotos(files);
+      renderPhotos();
+      updateUi();
+    });
+
+    els.downloadBtn.addEventListener("click", downloadStandaloneHtml);
+    els.resetBtn.addEventListener("click", resetAll);
+    window.addEventListener("error", (event) => {
+      addLog(`Fel: ${event.message}`, "bad");
+      els.mapBadge.textContent = "Ett JavaScript-fel stoppade inläsningen. Se händelseloggen.";
+    });
+    window.addEventListener("unhandledrejection", (event) => {
+      const reason = event.reason && event.reason.message ? event.reason.message : event.reason;
+      addLog(`Fel: ${reason}`, "bad");
+      els.mapBadge.textContent = "Ett asynkront fel stoppade inläsningen. Se händelseloggen.";
+    });
+
+    verifyLibraries();
+
+    function addLog(message, type = "good") {
+      const item = document.createElement("div");
+      item.className = `log-item ${type}`;
+      item.textContent = message;
+      els.log.prepend(item);
+    }
+
+    function verifyLibraries() {
+      const missing = [];
+      if (!window.L) missing.push("Leaflet");
+      if (!window.parseGeoraster) missing.push("georaster");
+      if (!window.GeoRasterLayer) missing.push("georaster-layer-for-leaflet");
+      if (!window.EXIF) missing.push("exif-js");
+
+      if (missing.length) {
+        addLog(`Saknar bibliotek: ${missing.join(", ")}. Kontrollera internet/CDN-blockering i Live Server.`, "bad");
+        els.mapBadge.textContent = `Saknar bibliotek: ${missing.join(", ")}.`;
+        els.geotiffInput.disabled = true;
+        els.imageInput.disabled = true;
+        return false;
+      }
+
+      addLog("Klar. Välj GeoTIFF och/eller GPS-bilder.", "good");
+      if (!window.proj4) {
+        addLog("Proj4 saknas. GeoTIFF i SWEREF99/RT90 kan behöva internetåtkomst till proj4-CDN.", "warn");
+      }
+      return true;
+    }
+
+    function defineKnownProjections() {
+      if (!window.proj4) return;
+
+      proj4.defs("EPSG:3006", "+proj=utm +zone=33 +ellps=GRS80 +units=m +no_defs +type=crs");
+      proj4.defs("EPSG:3011", "+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs");
+      proj4.defs("EPSG:3012", "+proj=tmerc +lat_0=0 +lon_0=13.5 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs");
+      proj4.defs("EPSG:3013", "+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs");
+      proj4.defs("EPSG:3014", "+proj=tmerc +lat_0=0 +lon_0=16.5 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs");
+      proj4.defs("EPSG:3015", "+proj=tmerc +lat_0=0 +lon_0=18 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs");
+      proj4.defs("EPSG:3016", "+proj=tmerc +lat_0=0 +lon_0=20.25 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs");
+      proj4.defs("EPSG:3017", "+proj=tmerc +lat_0=0 +lon_0=21.75 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs");
+      proj4.defs("EPSG:3018", "+proj=tmerc +lat_0=0 +lon_0=23.25 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs");
+    }
+
+    async function loadGeoTiff(file) {
+      try {
+        addLog(`Läser in ${file.name}...`, "good");
+        if (!map) {
+          throw new Error("Leaflet-kartan startade inte");
+        }
+        const buffer = await file.arrayBuffer();
+        if (!window.parseGeoraster || !window.GeoRasterLayer) {
+          throw new Error("GeoTIFF-biblioteken laddades inte");
+        }
+        const georaster = await parseGeoraster(buffer.slice(0));
+        addLog(`GeoTIFF metadata: ${georaster.width}x${georaster.height}px, EPSG:${georaster.projection || "okänd"}.`, "good");
+
+        if (state.rasterLayer) {
+          map.removeLayer(state.rasterLayer);
+        }
+
+        state.rasterLayer = new GeoRasterLayer({
+          georaster,
+          opacity: 0.88,
+          resolution: 192
+        }).addTo(map);
+
+        state.geotiff = georaster;
+        state.geotiffArrayBuffer = buffer;
+        state.geotiffName = file.name;
+        const rasterBounds = state.rasterLayer.getBounds();
+        if (!rasterBounds.isValid()) {
+          throw new Error("GeoTIFF saknar visningsbar geografisk utbredning");
+        }
+        addLog(`Kartans bounds: ${rasterBounds.getSouth().toFixed(5)}, ${rasterBounds.getWest().toFixed(5)} till ${rasterBounds.getNorth().toFixed(5)}, ${rasterBounds.getEast().toFixed(5)}.`, "good");
+        map.fitBounds(rasterBounds, { padding: [20, 20] });
+        filterPhotosByRasterBounds();
+        addLog(`GeoTIFF klar: ${file.name}`, "good");
+      } catch (error) {
+        console.error(error);
+        state.geotiff = null;
+        state.geotiffArrayBuffer = null;
+        addLog(`Kunde inte läsa GeoTIFF: ${error.message || error}`, "bad");
+      }
+    }
+
+    function filterPhotosByRasterBounds() {
+      if (!state.rasterLayer || !state.photos.length) return;
+
+      const rasterBounds = state.rasterLayer.getBounds();
+      const kept = [];
+      let removed = 0;
+
+      state.photos.forEach((photo) => {
+        if (rasterBounds.contains([photo.lat, photo.lon])) {
+          kept.push(photo);
+        } else {
+          removed += 1;
+          state.skipped.push({ name: photo.name, reason: "utanför GeoTIFF-kartan" });
+        }
+      });
+
+      state.photos = kept;
+      if (removed) {
+        addLog(`${removed} tidigare inlästa bild(er) låg utanför GeoTIFF-kartan och ignorerades.`, "warn");
+      }
+    }
+
+    async function loadPhotos(files) {
+      state.photos = [];
+      state.skipped = [];
+      if (!files.length) {
+        updateUi();
+        return;
+      }
+
+      addLog(`Bearbetar ${files.length} bild(er)...`, "good");
+      const quality = Number(els.quality.value);
+      const maxSize = Number(els.maxSize.value);
+      const thumbSize = Number(els.thumbSize.value);
+
+      for (const file of files) {
+        try {
+          const gps = await readGps(file);
+          if (!gps) {
+            state.skipped.push({ name: file.name, reason: "saknar GPS" });
+            continue;
+          }
+
+          if (state.rasterLayer && !state.rasterLayer.getBounds().contains([gps.lat, gps.lon])) {
+            state.skipped.push({ name: file.name, reason: "utanför GeoTIFF-kartan" });
+            continue;
+          }
+
+          const image = await compressImage(file, maxSize, quality);
+          const thumb = await compressImage(file, thumbSize, 0.78);
+          state.photos.push({
+            id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${state.photos.length}`,
+            name: file.name,
+            lat: gps.lat,
+            lon: gps.lon,
+            src: image.dataUrl,
+            thumb: thumb.dataUrl,
+            width: image.width,
+            height: image.height
+          });
+        } catch (error) {
+          console.error(error);
+          state.skipped.push({ name: file.name, reason: error.message || "kunde inte läsas" });
+        }
+      }
+
+      addLog(`${state.photos.length} placerade, ${state.skipped.length} ignorerade.`, state.photos.length ? "good" : "warn");
+    }
+
+    function readGps(file) {
+      return new Promise((resolve) => {
+        if (!window.EXIF) {
+          resolve(null);
+          return;
+        }
+        EXIF.getData(file, function () {
+          const lat = EXIF.getTag(this, "GPSLatitude");
+          const lon = EXIF.getTag(this, "GPSLongitude");
+          const latRef = EXIF.getTag(this, "GPSLatitudeRef") || "N";
+          const lonRef = EXIF.getTag(this, "GPSLongitudeRef") || "E";
+
+          if (!lat || !lon) {
+            resolve(null);
+            return;
+          }
+
+          resolve({
+            lat: dmsToDecimal(lat, latRef),
+            lon: dmsToDecimal(lon, lonRef)
+          });
+        });
+      });
+    }
+
+    function dmsToDecimal(value, ref) {
+      const parts = Array.from(value).map((part) => {
+        if (typeof part === "number") return part;
+        if (part && typeof part.numerator === "number" && typeof part.denominator === "number") {
+          return part.numerator / part.denominator;
+        }
+        return Number(part) || 0;
+      });
+      let decimal = parts[0] + parts[1] / 60 + parts[2] / 3600;
+      if (ref === "S" || ref === "W") decimal *= -1;
+      return decimal;
+    }
+
+    function compressImage(file, maxSide, quality) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        const url = URL.createObjectURL(file);
+
+        image.onload = () => {
+          URL.revokeObjectURL(url);
+          const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+          const width = Math.max(1, Math.round(image.naturalWidth * scale));
+          const height = Math.max(1, Math.round(image.naturalHeight * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.imageSmoothingQuality = "high";
+          ctx.drawImage(image, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL("image/webp", quality);
+          resolve({ dataUrl, width, height });
+        };
+
+        image.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error("bilden kunde inte öppnas"));
+        };
+
+        image.src = url;
+      });
+    }
+
+    function renderPhotos() {
+      if (!map || !state.markerLayer || !state.lineLayer) return;
+      state.markerLayer.clearLayers();
+      state.lineLayer.clearLayers();
+
+      const placed = computeDisplayPositions(state.photos);
+      const bounds = [];
+
+      placed.forEach((photo) => {
+        const icon = L.divIcon({
+          html: `<div class="thumb-marker"><img alt="" src="${photo.thumb}"></div>`,
+          className: "",
+          iconSize: [56, 64],
+          iconAnchor: [28, 64],
+          popupAnchor: [0, -62]
+        });
+
+        L.marker([photo.displayLat, photo.displayLon], { icon })
+          .bindPopup(`<div class="photo-popup"><img src="${photo.src}" alt=""><b>${escapeHtml(photo.name)}</b><span>${photo.lat.toFixed(6)}, ${photo.lon.toFixed(6)}</span></div>`)
+          .addTo(state.markerLayer);
+
+        if (photo.displayLat !== photo.lat || photo.displayLon !== photo.lon) {
+          L.circleMarker([photo.lat, photo.lon], {
+            radius: 3,
+            color: "#0b6f6a",
+            weight: 2,
+            fillColor: "#ffffff",
+            fillOpacity: 1
+          }).addTo(state.lineLayer);
+
+          L.polyline([[photo.lat, photo.lon], [photo.displayLat, photo.displayLon]], {
+            color: "#0b6f6a",
+            weight: 1,
+            dashArray: "4 4",
+            opacity: 0.85
+          }).addTo(state.lineLayer);
+        }
+
+        bounds.push([photo.lat, photo.lon]);
+        bounds.push([photo.displayLat, photo.displayLon]);
+      });
+
+      if (bounds.length && !state.rasterLayer) {
+        map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
+      }
+    }
+
+    function computeDisplayPositions(photos) {
+      const groups = new Map();
+      const rounded = 5;
+
+      photos.forEach((photo) => {
+        const key = `${photo.lat.toFixed(rounded)},${photo.lon.toFixed(rounded)}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(photo);
+      });
+
+      const metersPerDegreeLat = 111320;
+      const result = [];
+
+      groups.forEach((group) => {
+        if (group.length === 1) {
+          result.push({ ...group[0], displayLat: group[0].lat, displayLon: group[0].lon });
+          return;
+        }
+
+        const radiusMeters = Math.min(80, 18 + group.length * 8);
+        group.forEach((photo, index) => {
+          const angle = (Math.PI * 2 * index) / group.length;
+          const latOffset = (Math.sin(angle) * radiusMeters) / metersPerDegreeLat;
+          const lonScale = Math.max(0.2, Math.cos(photo.lat * Math.PI / 180));
+          const lonOffset = (Math.cos(angle) * radiusMeters) / (metersPerDegreeLat * lonScale);
+          result.push({
+            ...photo,
+            displayLat: photo.lat + latOffset,
+            displayLon: photo.lon + lonOffset
+          });
+        });
+      });
+
+      return result;
+    }
+
+    function updateUi() {
+      els.keptCount.textContent = state.photos.length;
+      els.skippedCount.textContent = state.skipped.length;
+      els.mapCount.textContent = state.rasterLayer ? "1" : "0";
+      els.downloadBtn.disabled = !state.photos.length && !(state.geotiffArrayBuffer && els.includeRaster.checked);
+
+      const mapText = state.rasterLayer ? `GeoTIFF: ${state.geotiffName}` : "OpenStreetMap används som bakgrund.";
+      const photoText = state.photos.length ? `${state.photos.length} foton placerade.` : "Inga foton placerade ännu.";
+      els.mapBadge.textContent = `${mapText} ${photoText}`;
+
+      if (state.skipped.length) {
+        const latest = state.skipped.slice(-4).map((item) => `${item.name}: ${item.reason}`).join(" | ");
+        addLog(latest, "warn");
+      }
+    }
+
+    function resetAll() {
+      if (state.rasterLayer && map) map.removeLayer(state.rasterLayer);
+      state.geotiff = null;
+      state.geotiffArrayBuffer = null;
+      state.geotiffName = "";
+      state.rasterLayer = null;
+      state.photos = [];
+      state.skipped = [];
+      if (state.markerLayer) state.markerLayer.clearLayers();
+      if (state.lineLayer) state.lineLayer.clearLayers();
+      els.geotiffInput.value = "";
+      els.imageInput.value = "";
+      els.log.innerHTML = "";
+      if (map) map.setView([59.33, 18.06], 5);
+      updateUi();
+      addLog("Allt rensat.", "good");
+    }
+
+    async function downloadStandaloneHtml() {
+      const rasterBase64 = state.geotiffArrayBuffer && els.includeRaster.checked
+        ? arrayBufferToBase64(state.geotiffArrayBuffer)
+        : "";
+
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        geotiffName: state.geotiffName,
+        rasterBase64,
+        photos: state.photos
+      };
+
+      const html = buildStandaloneHtml(payload);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "interaktiv_fotokarta.html";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      addLog("Exporterade interaktiv_fotokarta.html.", "good");
+    }
+
+    function arrayBufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+      }
+      return btoa(binary);
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      }[char]));
+    }
+
+    function buildStandaloneHtml(payload) {
+      const safePayload = JSON.stringify(payload).replace(/</g, "\\u003c");
+      const css = [
+        "html,body,#map{width:100%;height:100%;margin:0}",
+        "body{font-family:Arial,Helvetica,sans-serif}",
+        ".thumb-marker{position:relative;width:56px;height:56px;border:2px solid #fff;border-radius:8px;box-shadow:0 3px 12px rgba(20,31,43,.35);background:#fff;overflow:hidden}",
+        ".thumb-marker img{width:100%;height:100%;object-fit:cover;display:block}",
+        ".thumb-marker:after{content:\"\";position:absolute;left:50%;bottom:-7px;width:12px;height:12px;transform:translateX(-50%) rotate(45deg);border-right:2px solid #fff;border-bottom:2px solid #fff;background:#fff}",
+        ".photo-popup{width:min(300px,72vw)}",
+        ".photo-popup img{display:block;width:100%;max-height:280px;object-fit:contain;border-radius:6px;background:#f1f4f6}",
+        ".photo-popup b{display:block;margin-top:8px;overflow-wrap:anywhere}",
+        ".badge{position:absolute;z-index:500;left:12px;bottom:12px;max-width:min(520px,calc(100% - 24px));border:1px solid rgba(150,163,175,.55);border-radius:8px;padding:8px 10px;background:rgba(255,255,255,.92);color:#34424f;font-size:13px;box-shadow:0 5px 20px rgba(20,31,43,.12)}"
+      ].join("\n");
+      const js = [
+        `const payload=${safePayload};`,
+        "defineKnownProjections();",
+        "const map=L.map('map',{preferCanvas:true}).setView([59.33,18.06],5);",
+        "L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);",
+        "const markers=L.layerGroup().addTo(map);",
+        "const lines=L.layerGroup().addTo(map);",
+        "const bounds=[];",
+        "start();",
+        "async function start(){",
+        "if(payload.rasterBase64){try{const layer=new GeoRasterLayer({georaster:await parseGeoraster(base64ToArrayBuffer(payload.rasterBase64)),opacity:.88,resolution:192}).addTo(map);map.fitBounds(layer.getBounds(),{padding:[20,20]});}catch(error){console.error(error);}}",
+        "computeDisplayPositions(payload.photos||[]).forEach(function(photo){",
+        "const icon=L.divIcon({html:'<div class=\"thumb-marker\"><img alt=\"\" src=\"'+photo.thumb+'\"></div>',className:'',iconSize:[56,64],iconAnchor:[28,64],popupAnchor:[0,-62]});",
+        "L.marker([photo.displayLat,photo.displayLon],{icon:icon}).bindPopup('<div class=\"photo-popup\"><img src=\"'+photo.src+'\" alt=\"\"><b>'+escapeHtml(photo.name)+'</b><span>'+photo.lat.toFixed(6)+', '+photo.lon.toFixed(6)+'</span></div>').addTo(markers);",
+        "if(photo.displayLat!==photo.lat||photo.displayLon!==photo.lon){L.circleMarker([photo.lat,photo.lon],{radius:3,color:'#0b6f6a',weight:2,fillColor:'#ffffff',fillOpacity:1}).addTo(lines);L.polyline([[photo.lat,photo.lon],[photo.displayLat,photo.displayLon]],{color:'#0b6f6a',weight:1,dashArray:'4 4',opacity:.85}).addTo(lines);}",
+        "bounds.push([photo.lat,photo.lon],[photo.displayLat,photo.displayLon]);",
+        "});",
+        "if(bounds.length&&!payload.rasterBase64)map.fitBounds(bounds,{padding:[30,30],maxZoom:17});",
+        "document.getElementById('badge').textContent=(payload.geotiffName?'GeoTIFF: '+payload.geotiffName+'. ':'OpenStreetMap. ')+(payload.photos||[]).length+' foton.';",
+        "}",
+        "function computeDisplayPositions(photos){const groups=new Map();photos.forEach(function(photo){const key=photo.lat.toFixed(5)+','+photo.lon.toFixed(5);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(photo);});const result=[];groups.forEach(function(group){if(group.length===1){result.push(Object.assign({},group[0],{displayLat:group[0].lat,displayLon:group[0].lon}));return;}const radiusMeters=Math.min(80,18+group.length*8);group.forEach(function(photo,index){const angle=Math.PI*2*index/group.length;const latOffset=Math.sin(angle)*radiusMeters/111320;const lonOffset=Math.cos(angle)*radiusMeters/(111320*Math.max(.2,Math.cos(photo.lat*Math.PI/180)));result.push(Object.assign({},photo,{displayLat:photo.lat+latOffset,displayLon:photo.lon+lonOffset}));});});return result;}",
+        "function base64ToArrayBuffer(base64){const binary=atob(base64);const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i+=1)bytes[i]=binary.charCodeAt(i);return bytes.buffer;}",
+        "function defineKnownProjections(){if(!window.proj4)return;proj4.defs('EPSG:3006','+proj=utm +zone=33 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3011','+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3012','+proj=tmerc +lat_0=0 +lon_0=13.5 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3013','+proj=tmerc +lat_0=0 +lon_0=15 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3014','+proj=tmerc +lat_0=0 +lon_0=16.5 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3015','+proj=tmerc +lat_0=0 +lon_0=18 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3016','+proj=tmerc +lat_0=0 +lon_0=20.25 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3017','+proj=tmerc +lat_0=0 +lon_0=21.75 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');proj4.defs('EPSG:3018','+proj=tmerc +lat_0=0 +lon_0=23.25 +k=1 +x_0=150000 +y_0=0 +ellps=GRS80 +units=m +no_defs +type=crs');}",
+        "function escapeHtml(value){return String(value).replace(/[&<>\"']/g,function(char){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#039;'}[char];});}"
+      ].join("\n");
+      const doc = document.implementation.createHTMLDocument("Interaktiv fotokarta");
+      doc.documentElement.lang = "sv";
+
+      const metaCharset = doc.createElement("meta");
+      metaCharset.setAttribute("charset", "UTF-8");
+      doc.head.appendChild(metaCharset);
+
+      const metaViewport = doc.createElement("meta");
+      metaViewport.name = "viewport";
+      metaViewport.content = "width=device-width, initial-scale=1.0";
+      doc.head.appendChild(metaViewport);
+
+      const leafletCss = doc.createElement("link");
+      leafletCss.rel = "stylesheet";
+      leafletCss.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      doc.head.appendChild(leafletCss);
+
+      const style = doc.createElement("style");
+      style.textContent = css;
+      doc.head.appendChild(style);
+
+      const mapEl = doc.createElement("div");
+      mapEl.id = "map";
+      doc.body.appendChild(mapEl);
+
+      const badge = doc.createElement("div");
+      badge.className = "badge";
+      badge.id = "badge";
+      badge.textContent = "Laddar karta...";
+      doc.body.appendChild(badge);
+
+      [
+        "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+        "https://unpkg.com/proj4@2.11.0/dist/proj4.js",
+        "https://unpkg.com/georaster",
+        "https://unpkg.com/georaster-layer-for-leaflet"
+      ].forEach((src) => {
+        const script = doc.createElement("script");
+        script.src = src;
+        doc.body.appendChild(script);
+      });
+
+      const appScript = doc.createElement("script");
+      appScript.textContent = js;
+      doc.body.appendChild(appScript);
+
+      return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
+    }
+
+    updateUi();
+  </script>
+</body>
+</html>
