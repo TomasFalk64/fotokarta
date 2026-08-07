@@ -306,7 +306,6 @@
       font-weight: 700;
     }
 
-    input[type="file"],
     input[type="text"],
     input[type="number"],
     select {
@@ -323,7 +322,52 @@
       width: 100%;
     }
 
+    input[type="file"].native-file {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .file-picker {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+    }
+
+    .file-button {
+      display: inline-flex;
+      align-items: center;
+      min-height: 38px;
+      margin: 0;
+      padding: 8px 12px;
+      border: 1px solid #c7d0d8;
+      border-radius: 6px;
+      background: #ffffff;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .file-button:hover {
+      border-color: #9aa8b4;
+      background: #f7f9fb;
+    }
+
+    .file-name {
+      min-width: 0;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 13px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .field {
+      position: relative;
       margin-bottom: 12px;
     }
 
@@ -350,14 +394,24 @@
 
     .hint {
       display: none;
-      margin-top: 6px;
+      position: absolute;
+      z-index: 20;
+      left: 0;
+      top: calc(100% + 6px);
+      width: min(280px, 100%);
+      margin: 0;
+      padding: 8px 10px;
+      border: 1px solid rgba(150, 163, 175, .65);
+      border-radius: 6px;
+      background: #ffffff;
+      box-shadow: 0 6px 20px rgba(20, 31, 43, .16);
       font-size: 12px;
       line-height: 1.35;
       color: var(--muted);
+      pointer-events: none;
     }
 
-    .field:hover .hint,
-    .field:focus-within .hint {
+    .field:hover .hint {
       display: block;
     }
 
@@ -592,12 +646,20 @@
         <h2>Inläsning</h2>
         <div class="field">
           <label for="geotiffInput">GeoTIFF-karta</label>
-          <input type="file" id="geotiffInput" accept=".tif,.tiff,image/tiff">
+          <div class="file-picker">
+            <input class="native-file" type="file" id="geotiffInput" accept=".tif,.tiff,image/tiff">
+            <label class="file-button" for="geotiffInput">Välj fil</label>
+            <span class="file-name" id="geotiffFileName">Ingen fil vald</span>
+          </div>
           <div class="hint">Kartan visas utan extern bakgrund, bara vald GeoTIFF och placerade foton.</div>
         </div>
         <div class="field">
           <label for="imageInput">GPS-märkta bilder</label>
-          <input type="file" id="imageInput" multiple accept="image/*">
+          <div class="file-picker">
+            <input class="native-file" type="file" id="imageInput" multiple accept="image/*">
+            <label class="file-button" for="imageInput">Välj fil</label>
+            <span class="file-name" id="imageFileName">Inga filer valda</span>
+          </div>
           <div class="hint">Bilder utan GPS hoppas över.</div>
         </div>
         <div class="field">
@@ -673,6 +735,8 @@
     const els = {
       geotiffInput: document.getElementById("geotiffInput"),
       imageInput: document.getElementById("imageInput"),
+      geotiffFileName: document.getElementById("geotiffFileName"),
+      imageFileName: document.getElementById("imageFileName"),
       downloadBtn: document.getElementById("downloadBtn"),
       resetBtn: document.getElementById("resetBtn"),
       thumbSize: document.getElementById("thumbSize"),
@@ -721,6 +785,7 @@
     els.geotiffInput.addEventListener("change", async (event) => {
       const file = event.target.files[0];
       if (!file) return;
+      updateFileLabels();
       await loadGeoTiff(file);
       renderPhotos();
       updateUi();
@@ -728,6 +793,7 @@
 
     els.imageInput.addEventListener("change", async (event) => {
       const files = Array.from(event.target.files || []);
+      updateFileLabels();
       await loadPhotos(files);
       renderPhotos();
       updateUi();
@@ -753,6 +819,15 @@
       item.className = `log-item ${type}`;
       item.textContent = message;
       els.log.prepend(item);
+    }
+
+    function updateFileLabels() {
+      const geotiffFile = els.geotiffInput.files && els.geotiffInput.files[0];
+      const imageCount = els.imageInput.files ? els.imageInput.files.length : 0;
+      els.geotiffFileName.textContent = geotiffFile ? geotiffFile.name : "Ingen fil vald";
+      els.imageFileName.textContent = imageCount
+        ? `${imageCount} fil${imageCount === 1 ? "" : "er"} valda`
+        : "Inga filer valda";
     }
 
     function verifyLibraries() {
@@ -1298,6 +1373,7 @@
       }
       els.geotiffInput.value = "";
       els.imageInput.value = "";
+      updateFileLabels();
       els.log.innerHTML = "";
       updateUi();
       addLog("Allt rensat.", "good");
@@ -1319,10 +1395,19 @@
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "interaktiv_fotokarta.html";
+      const downloadName = buildDownloadFileName(state.geotiffName);
+      link.download = downloadName;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      addLog("Exporterade interaktiv_fotokarta.html.", "good");
+      addLog(`Exporterade ${downloadName}.`, "good");
+    }
+
+    function buildDownloadFileName(geotiffName) {
+      const baseName = (geotiffName || "karta")
+        .replace(/\.[^/.\\]+$/, "")
+        .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
+        .trim() || "karta";
+      return `Fotokarta_${baseName}.html`;
     }
 
     function buildStandaloneImageHtml(payload) {
