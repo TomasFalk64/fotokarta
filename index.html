@@ -517,50 +517,15 @@
           <input type="file" id="imageInput" multiple accept="image/*">
           <div class="hint">Bilder utan GPS hoppas över. Du kan välja om bilder utanför GeoTIFF ska döljas.</div>
         </div>
-      </section>
-
-      <section class="section">
-        <h2>Bildexport</h2>
         <div class="field">
-          <label for="rasterResolution">Rasterkvalitet</label>
-          <select id="rasterResolution">
-            <option value="512" selected>Skarp</option>
-            <option value="768">Extra skarp</option>
-            <option value="256">Snabb</option>
-          </select>
-          <div class="hint">Högre kvalitet gör kartbilden skarpare men kan bli långsammare för stora GeoTIFF-filer.</div>
-        </div>
-        <div class="row">
-          <div class="field">
-            <label for="maxSize">Maxsida, px</label>
-            <input type="number" id="maxSize" min="320" max="2400" step="80" value="1280">
-          </div>
-          <div class="field">
-            <label for="thumbSize">Miniatyrstorlek <span id="thumbSizeValue">56 px</span></label>
-            <input type="range" id="thumbSize" min="20" max="120" step="2" value="56">
-          </div>
-        </div>
-        <div class="field">
-          <label for="quality">WebP-kvalitet <span id="qualityValue">0.82</span></label>
-          <input type="range" id="quality" min="0.45" max="0.95" step="0.01" value="0.82">
-        </div>
-        <label class="check-row" for="filterOutside">
-          <input type="checkbox" id="filterOutside">
-          Dölj bilder utanför GeoTIFF
-        </label>
-      </section>
-
-      <section class="section">
-        <h2>Status</h2>
-        <div class="stats">
-          <div class="stat"><strong id="keptCount">0</strong><span>placerade</span></div>
-          <div class="stat"><strong id="skippedCount">0</strong><span>ignorerade</span></div>
-          <div class="stat"><strong id="mapCount">0</strong><span>kartlager</span></div>
+          <label for="thumbSize">Miniatyrstorlek <span id="thumbSizeValue">56 px</span></label>
+          <input type="range" id="thumbSize" min="20" max="120" step="2" value="56">
+          <div class="hint">Storleken på miniaturen som används för fotomarkörer.</div>
         </div>
       </section>
 
       <section class="section">
-        <h2>Händelser</h2>
+        <h2>Logg</h2>
         <div class="log" id="log"></div>
       </section>
 
@@ -615,16 +580,8 @@
       imageInput: document.getElementById("imageInput"),
       downloadBtn: document.getElementById("downloadBtn"),
       resetBtn: document.getElementById("resetBtn"),
-      quality: document.getElementById("quality"),
-      qualityValue: document.getElementById("qualityValue"),
-      rasterResolution: document.getElementById("rasterResolution"),
-      maxSize: document.getElementById("maxSize"),
       thumbSize: document.getElementById("thumbSize"),
       thumbSizeValue: document.getElementById("thumbSizeValue"),
-      filterOutside: document.getElementById("filterOutside"),
-      keptCount: document.getElementById("keptCount"),
-      skippedCount: document.getElementById("skippedCount"),
-      mapCount: document.getElementById("mapCount"),
       log: document.getElementById("log"),
       mapBadge: document.getElementById("mapBadge"),
       imageStage: document.getElementById("imageStage"),
@@ -639,19 +596,10 @@
 
     defineKnownProjections();
 
-    els.quality.addEventListener("input", () => {
-      els.qualityValue.textContent = Number(els.quality.value).toFixed(2);
-    });
     els.thumbSize.addEventListener("input", () => {
       updateMarkerSize();
       renderPhotos();
     });
-    els.filterOutside.addEventListener("change", () => {
-      filterPhotosByRasterBounds();
-      renderPhotos();
-      updateUi();
-    });
-    els.rasterResolution.addEventListener("change", rerenderGeoTiff);
     els.zoomInBtn.addEventListener("click", () => zoomAtCenter(1.25));
     els.zoomOutBtn.addEventListener("click", () => zoomAtCenter(0.8));
     els.zoomResetBtn.addEventListener("click", resetView);
@@ -749,7 +697,6 @@
         state.geotiffArrayBuffer = buffer;
         state.geotiffName = file.name;
         await renderImageMap(georaster);
-        filterPhotosByRasterBounds();
         renderPhotos();
         addLog(`GeoTIFF klar: ${file.name}`, "good");
       } catch (error) {
@@ -847,7 +794,7 @@
     }
 
     async function georasterToImageDataUrl(georaster) {
-      const maxCanvasSide = Math.min(3600, Number(els.rasterResolution.value) * 6 || 3072);
+      const maxCanvasSide = Math.min(3600, 512 * 6);
       const scale = Math.min(1, maxCanvasSide / Math.max(georaster.width, georaster.height));
       const width = Math.max(1, Math.round(georaster.width * scale));
       const height = Math.max(1, Math.round(georaster.height * scale));
@@ -919,28 +866,6 @@
       return [value, value, value];
     }
 
-    function filterPhotosByRasterBounds() {
-      if (!els.filterOutside.checked) return;
-      if (!state.geotiff || !state.photos.length) return;
-
-      const kept = [];
-      let removed = 0;
-
-      state.photos.forEach((photo) => {
-        if (photoToImagePoint(photo)) {
-          kept.push(photo);
-        } else {
-          removed += 1;
-          state.skipped.push({ name: photo.name, reason: "utanför GeoTIFF-kartan" });
-        }
-      });
-
-      state.photos = kept;
-      if (removed) {
-        addLog(`${removed} tidigare inlästa bild(er) låg utanför GeoTIFF-kartan och ignorerades.`, "warn");
-      }
-    }
-
     async function loadPhotos(files) {
       state.photos = [];
       state.skipped = [];
@@ -950,8 +875,8 @@
       }
 
       addLog(`Bearbetar ${files.length} bild(er)...`, "good");
-      const quality = Number(els.quality.value);
-      const maxSize = Number(els.maxSize.value);
+      const quality = 0.82;
+      const maxSize = 1280;
       const thumbSize = Math.max(160, Number(els.thumbSize.value) * 2);
 
       for (const file of files) {
@@ -962,12 +887,6 @@
             continue;
           }
 
-          if (els.filterOutside.checked && state.geotiff) {
-            if (!photoToImagePoint(gps)) {
-              state.skipped.push({ name: file.name, reason: "utanför GeoTIFF-kartan" });
-              continue;
-            }
-          }
 
           const image = await compressImage(file, maxSize, quality);
           const thumb = await compressImage(file, thumbSize, 0.78);
@@ -1168,9 +1087,6 @@
     }
 
     function updateUi() {
-      els.keptCount.textContent = state.photos.length;
-      els.skippedCount.textContent = state.skipped.length;
-      els.mapCount.textContent = state.imageDataUrl ? "1" : "0";
       els.downloadBtn.disabled = !state.imageDataUrl && !state.photos.length;
 
       const mapText = state.imageDataUrl ? `GeoTIFF: ${state.geotiffName}` : "Ingen kartbild visas.";
@@ -1203,7 +1119,6 @@
       const payload = {
         exportedAt: new Date().toISOString(),
         geotiffName: state.geotiffName,
-        rasterResolution: Number(els.rasterResolution.value) || 512,
         markerSize: Number(els.thumbSize.value) || 56,
         imageDataUrl: state.imageDataUrl,
         imageAspect: state.geotiff ? state.geotiff.width / state.geotiff.height : 1,
