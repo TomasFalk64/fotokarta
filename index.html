@@ -55,6 +55,7 @@
       height: 100%;
       min-height: 100vh;
       overflow: auto;
+      position: relative;
       padding: 42px;
       background: var(--map-bg);
       display: flex;
@@ -100,7 +101,7 @@
       min-width: 0;
       min-height: 0;
       transform: translate(-50%, -100%);
-      border: 1px solid #ffffff;
+      border: 2px solid #ffffff;
       border-radius: 8px;
       box-shadow: 0 0 0 1px rgba(0, 0, 0, .8), 0 3px 12px rgba(20, 31, 43, .35);
       background: transparent;
@@ -150,29 +151,105 @@
       border-top: 8px solid #ffffff;
     }
 
-    .image-popup {
+    .floating-popup {
       position: absolute;
-      z-index: 1001;
-      left: 50%;
-      bottom: calc(var(--marker-size, 56px) + 12px);
-      width: min(280px, 70vw);
-      transform: translateX(-50%);
+      z-index: 1002;
+      right: 16px;
+      top: 16px;
+      width: min(560px, 80vw);
       border: 1px solid #c7d0d8;
       border-radius: 8px;
       padding: 4px;
       background: #ffffff;
       box-shadow: 0 0 0 1px rgba(0, 0, 0, .8), 0 6px 24px rgba(20, 31, 43, .24);
       display: none;
+      pointer-events: auto;
+      max-height: calc(80vh - 32px);
+      overflow: hidden;
     }
 
-    .image-photo.open .image-popup {
+    .floating-popup .zoom-wrap {
+      position: relative;
+      overflow: auto;
+      border-radius: 5px;
+      background: #f1f4f6;
+      width: 100%;
+      max-height: calc(80vh - 150px);
+    }
+
+    .floating-popup .zoom-wrap img {
       display: block;
+      width: auto;
+      max-width: 100%;
+      height: auto;
+      max-height: calc(80vh - 150px);
+      image-rendering: optimizeQuality;
+      image-rendering: -webkit-optimize-contrast;
+    }
+
+    .floating-popup .popup-tools {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .floating-popup .popup-tools button {
+      height: 30px;
+      min-width: 32px;
+      border: 1px solid #b8c4ce;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #263440;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .floating-popup .popup-tools .popup-zoom-value {
+      min-width: 48px;
+      text-align: center;
+      color: #34424f;
+      font-size: 13px;
+    }
+
+    .floating-popup b {
+      display: block;
+      margin-top: 8px;
+      color: #1f2933;
+      font-size: 13px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+
+    .floating-popup span {
+      display: none;
+    }
+
+    .floating-popup b {
+      display: block;
+      margin-top: 5px;
+      color: #1f2933;
+      font-size: 13px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+
+    .floating-popup span {
+      display: none;
+    }
+
+    .image-photo.open {
+      z-index: 1000;
     }
 
     .image-popup img {
       display: block;
-      width: 100%;
+      width: auto;
+      max-width: 100%;
       height: auto;
+      max-height: calc(80vh - 88px);
+      image-rendering: optimizeQuality;
+      image-rendering: -webkit-optimize-contrast;
       border-radius: 5px;
       background: #f1f4f6;
     }
@@ -272,10 +349,16 @@
     }
 
     .hint {
+      display: none;
       margin-top: 6px;
       font-size: 12px;
       line-height: 1.35;
       color: var(--muted);
+    }
+
+    .field:hover .hint,
+    .field:focus-within .hint {
+      display: block;
     }
 
     .actions {
@@ -515,12 +598,22 @@
         <div class="field">
           <label for="imageInput">GPS-märkta bilder</label>
           <input type="file" id="imageInput" multiple accept="image/*">
-          <div class="hint">Bilder utan GPS hoppas över. Du kan välja om bilder utanför GeoTIFF ska döljas.</div>
+          <div class="hint">Bilder utan GPS hoppas över.</div>
         </div>
         <div class="field">
           <label for="thumbSize">Miniatyrstorlek <span id="thumbSizeValue">56 px</span></label>
           <input type="range" id="thumbSize" min="20" max="120" step="2" value="56">
           <div class="hint">Storleken på miniaturen som används för fotomarkörer.</div>
+        </div>
+        <div class="field">
+          <label for="maxSize">Maxsida, px <span id="maxSizeValue">1500</span></label>
+          <input type="range" id="maxSize" min="1000" max="3000" step="100" value="1500">
+          <div class="hint">Maximal bildstorlek för popup-bilden.</div>
+        </div>
+        <div class="field">
+          <label for="quality">Kvalitet <span id="qualityValue">0.85</span></label>
+          <input type="range" id="quality" min="0.45" max="0.95" step="0.01" value="0.85">
+          <div class="hint">Komprimeringskvalitet för popup-bilden.</div>
         </div>
       </section>
 
@@ -541,6 +634,7 @@
           <img id="imageMap" alt="">
           <div class="image-overlay" id="imageOverlay"></div>
         </div>
+        <div class="floating-popup" id="floatingPopup"></div>
       </div>
       <div class="zoom-controls" aria-label="Zoomkontroller">
         <button type="button" id="zoomOutBtn" title="Zooma ut">-</button>
@@ -563,6 +657,7 @@
       imageDataUrl: "",
       photos: [],
       skipped: [],
+      objectUrls: [],
       view: {
         zoom: 1,
         panX: 0,
@@ -582,12 +677,17 @@
       resetBtn: document.getElementById("resetBtn"),
       thumbSize: document.getElementById("thumbSize"),
       thumbSizeValue: document.getElementById("thumbSizeValue"),
+      maxSize: document.getElementById("maxSize"),
+      maxSizeValue: document.getElementById("maxSizeValue"),
+      quality: document.getElementById("quality"),
+      qualityValue: document.getElementById("qualityValue"),
       log: document.getElementById("log"),
       mapBadge: document.getElementById("mapBadge"),
       imageStage: document.getElementById("imageStage"),
       imageSurface: document.getElementById("imageSurface"),
       imageMap: document.getElementById("imageMap"),
       imageOverlay: document.getElementById("imageOverlay"),
+      floatingPopup: document.getElementById("floatingPopup"),
       zoomInBtn: document.getElementById("zoomInBtn"),
       zoomOutBtn: document.getElementById("zoomOutBtn"),
       zoomResetBtn: document.getElementById("zoomResetBtn"),
@@ -599,6 +699,12 @@
     els.thumbSize.addEventListener("input", () => {
       updateMarkerSize();
       renderPhotos();
+    });
+    els.maxSize.addEventListener("input", () => {
+      els.maxSizeValue.textContent = `${els.maxSize.value} px`;
+    });
+    els.quality.addEventListener("input", () => {
+      els.qualityValue.textContent = Number(els.quality.value).toFixed(2);
     });
     els.zoomInBtn.addEventListener("click", () => zoomAtCenter(1.25));
     els.zoomOutBtn.addEventListener("click", () => zoomAtCenter(0.8));
@@ -755,7 +861,7 @@
     }
 
     function startPan(event) {
-      if (!state.imageDataUrl || event.button !== 0 || event.target.closest(".image-photo")) return;
+      if (!state.imageDataUrl || event.button !== 0 || event.target.closest(".image-photo") || event.target.closest('.floating-popup')) return;
       state.view.dragging = true;
       state.view.dragStartX = event.clientX;
       state.view.dragStartY = event.clientY;
@@ -866,7 +972,13 @@
       return [value, value, value];
     }
 
+    async function cleanupPhotoUrls() {
+      state.objectUrls.forEach(URL.revokeObjectURL);
+      state.objectUrls = [];
+    }
+
     async function loadPhotos(files) {
+      await cleanupPhotoUrls();
       state.photos = [];
       state.skipped = [];
       if (!files.length) {
@@ -875,9 +987,9 @@
       }
 
       addLog(`Bearbetar ${files.length} bild(er)...`, "good");
-      const quality = 0.82;
-      const maxSize = 1280;
-      const thumbSize = Math.max(160, Number(els.thumbSize.value) * 2);
+      const quality = Number(els.quality.value);
+      const maxSize = Math.min(Math.round(Number(els.maxSize.value) * (window.devicePixelRatio || 1)), 3600);
+      const thumbSize = Math.max(160, Math.round(Number(els.thumbSize.value) * 2));
 
       for (const file of files) {
         try {
@@ -890,6 +1002,8 @@
 
           const image = await compressImage(file, maxSize, quality);
           const thumb = await compressImage(file, thumbSize, 0.78);
+          const fullSrc = URL.createObjectURL(file);
+          state.objectUrls.push(fullSrc);
           state.photos.push({
             id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${state.photos.length}`,
             name: file.name,
@@ -897,8 +1011,11 @@
             lon: gps.lon,
             src: image.dataUrl,
             thumb: thumb.dataUrl,
+            fullSrc,
             width: image.width,
-            height: image.height
+            height: image.height,
+            originalWidth: image.originalWidth,
+            originalHeight: image.originalHeight
           });
         } catch (error) {
           console.error(error);
@@ -954,17 +1071,19 @@
 
         image.onload = () => {
           URL.revokeObjectURL(url);
-          const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+          const maxInput = Math.max(image.naturalWidth, image.naturalHeight);
+          const scale = Math.min(1, maxSide / maxInput);
           const width = Math.max(1, Math.round(image.naturalWidth * scale));
           const height = Math.max(1, Math.round(image.naturalHeight * scale));
           const canvas = document.createElement("canvas");
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext("2d");
+          ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "high";
           ctx.drawImage(image, 0, 0, width, height);
           const dataUrl = canvas.toDataURL("image/webp", quality);
-          resolve({ dataUrl, width, height });
+          resolve({ dataUrl, width, height, originalWidth: image.naturalWidth, originalHeight: image.naturalHeight });
         };
 
         image.onerror = () => {
@@ -994,20 +1113,81 @@
         thumb.alt = "";
         marker.appendChild(thumb);
 
-        const popup = document.createElement("div");
-        popup.className = "image-popup";
-        popup.innerHTML = `<img src="${photo.src}" alt=""><b>${escapeHtml(photo.name)}</b><span>${photo.lat.toFixed(6)}, ${photo.lon.toFixed(6)}</span>`;
-        marker.appendChild(popup);
-
         marker.addEventListener("click", () => {
-          els.imageOverlay.querySelectorAll(".image-photo.open").forEach((openMarker) => {
-            if (openMarker !== marker) openMarker.classList.remove("open");
-          });
-          marker.classList.toggle("open");
+          openFloatingPopup(photo, marker);
         });
 
         els.imageOverlay.appendChild(marker);
       });
+    }
+
+    function openFloatingPopup(photo, marker) {
+      const popup = els.floatingPopup;
+      popup.innerHTML = `
+        <div class="zoom-wrap" data-scale="1">
+          <img src="${photo.fullSrc}" width="${photo.originalWidth}" height="${photo.originalHeight}" alt="">
+        </div>
+        <div class="popup-tools">
+          <button type="button" data-popup-zoom="out" title="Zooma ut">-</button>
+          <span class="popup-zoom-value">100%</span>
+          <button type="button" data-popup-zoom="in" title="Zooma in">+</button>
+          <button type="button" data-popup-zoom="reset" title="Återställ zoom">100%</button>
+        </div>
+        <b>${escapeHtml(photo.name)}</b>
+      `;
+      const zoomWrap = popup.querySelector(".zoom-wrap");
+      zoomWrap.addEventListener("wheel", handlePopupWheel, { passive: false });
+      popup.querySelectorAll("[data-popup-zoom]").forEach((button) => {
+        button.addEventListener("click", handlePopupButton);
+      });
+      popup.style.display = "block";
+      els.imageOverlay.querySelectorAll(".image-photo.open").forEach((openMarker) => {
+        if (openMarker !== marker) openMarker.classList.remove("open");
+      });
+      marker.classList.add("open");
+    }
+
+    function setPopupZoom(zoomWrap, scale, event) {
+      const img = zoomWrap.querySelector('img');
+      if (!img) return;
+      const oldScale = Number(zoomWrap.dataset.scale || 1);
+      const nextScale = clamp(scale, 1, 5);
+      const rect = zoomWrap.getBoundingClientRect();
+      const originX = event ? event.clientX - rect.left : rect.width / 2;
+      const originY = event ? event.clientY - rect.top : rect.height / 2;
+      const ratio = nextScale / oldScale;
+      zoomWrap.dataset.scale = String(nextScale);
+      img.style.maxWidth = nextScale === 1 ? "" : "none";
+      img.style.maxHeight = nextScale === 1 ? "" : "none";
+      img.style.width = nextScale === 1 ? "" : `${nextScale * 100}%`;
+      img.style.height = "auto";
+      zoomWrap.scrollLeft = (zoomWrap.scrollLeft + originX) * ratio - originX;
+      zoomWrap.scrollTop = (zoomWrap.scrollTop + originY) * ratio - originY;
+      const value = els.floatingPopup.querySelector(".popup-zoom-value");
+      if (value) value.textContent = `${Math.round(nextScale * 100)}%`;
+    }
+
+    function handlePopupWheel(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      const zoomWrap = event.currentTarget;
+      let scale = Number(zoomWrap.dataset.scale || 1);
+      setPopupZoom(zoomWrap, scale * (event.deltaY < 0 ? 1.15 : 0.87), event);
+    }
+
+    function handlePopupButton(event) {
+      event.stopPropagation();
+      const zoomWrap = els.floatingPopup.querySelector(".zoom-wrap");
+      if (!zoomWrap) return;
+      const action = event.currentTarget.dataset.popupZoom;
+      const scale = Number(zoomWrap.dataset.scale || 1);
+      if (action === "in") setPopupZoom(zoomWrap, scale * 1.25);
+      if (action === "out") setPopupZoom(zoomWrap, scale * 0.8);
+      if (action === "reset") {
+        setPopupZoom(zoomWrap, 1);
+        zoomWrap.scrollLeft = 0;
+        zoomWrap.scrollTop = 0;
+      }
     }
 
     function updateMarkerSize() {
@@ -1088,6 +1268,9 @@
 
     function updateUi() {
       els.downloadBtn.disabled = !state.imageDataUrl && !state.photos.length;
+      if (!state.photos.length && els.floatingPopup) {
+        els.floatingPopup.style.display = "none";
+      }
 
       const mapText = state.imageDataUrl ? `GeoTIFF: ${state.geotiffName}` : "Ingen kartbild visas.";
       const photoText = state.photos.length ? `${state.photos.length} foton placerade.` : "Inga foton placerade ännu.";
@@ -1106,8 +1289,13 @@
       state.imageDataUrl = "";
       state.photos = [];
       state.skipped = [];
+      cleanupPhotoUrls();
       els.imageMap.removeAttribute("src");
       els.imageOverlay.innerHTML = "";
+      if (els.floatingPopup) {
+        els.floatingPopup.style.display = "none";
+        els.floatingPopup.innerHTML = "";
+      }
       els.geotiffInput.value = "";
       els.imageInput.value = "";
       els.log.innerHTML = "";
@@ -1158,14 +1346,21 @@
         ".surface{position:relative;flex:0 0 auto;background:#fff;box-shadow:0 8px 28px rgba(20,31,43,.18);transform-origin:0 0;will-change:transform}",
         ".surface>img{display:block;max-width:calc(100vw - 84px);max-height:calc(100vh - 84px);width:auto;height:auto;object-fit:contain}",
         ".overlay{position:absolute;inset:0;pointer-events:none}",
-        ".marker{position:absolute;width:var(--marker-size,56px);height:var(--marker-size,56px);min-width:0;min-height:0;transform:translate(-50%,-100%);border:1px solid #fff;border-radius:8px;box-shadow:0 0 0 1px rgba(0,0,0,.8),0 3px 12px rgba(20,31,43,.35);background:transparent;cursor:pointer;pointer-events:auto;padding:0;overflow:visible;z-index:1}",
+        ".floating-popup{position:fixed;z-index:1002;right:16px;top:16px;width:min(520px,75vw);max-height:calc(80vh - 32px);border:1px solid #c7d0d8;border-radius:8px;padding:8px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.8),0 6px 24px rgba(20,31,43,.24);display:none;pointer-events:auto;overflow:hidden}",
+        ".floating-popup .zoom-wrap{position:relative;overflow:auto;width:100%;max-height:calc(80vh - 150px);background:#f1f4f6;border-radius:6px}",
+        ".floating-popup .zoom-wrap img{display:block;width:auto;max-width:100%;height:auto;max-height:calc(80vh - 150px);image-rendering:optimizeQuality;image-rendering:-webkit-optimize-contrast}",
+        ".floating-popup .popup-tools{display:flex;align-items:center;gap:6px;margin-top:6px}",
+        ".floating-popup .popup-tools button{height:30px;min-width:32px;border:1px solid #b8c4ce;border-radius:6px;background:#fff;color:#263440;font-weight:700;cursor:pointer}",
+        ".floating-popup .popup-tools .popup-zoom-value{min-width:48px;text-align:center;color:#34424f;font-size:13px}",
+        ".floating-popup b{display:block;margin-top:6px;color:#1f2933;font-size:13px;line-height:1.25;overflow-wrap:anywhere}",
+        ".marker{position:absolute;width:var(--marker-size,56px);height:var(--marker-size,56px);min-width:0;min-height:0;transform:translate(-50%,-100%);border:2px solid #fff;border-radius:8px;box-shadow:0 0 0 1px rgba(0,0,0,.8),0 3px 12px rgba(20,31,43,.35);background:transparent;cursor:pointer;pointer-events:auto;padding:0;overflow:visible;z-index:1}",
         ".marker.open{z-index:1000}",
         ".marker>img{width:100%;height:100%;object-fit:cover;border-radius:7px}",
         ".marker:after{content:\"\";position:absolute;z-index:-2;left:50%;bottom:-10px;width:0;height:0;transform:translateX(-50%);border-left:8px solid transparent;border-right:8px solid transparent;border-top:9px solid rgba(0,0,0,.8)}",
         ".marker:before{content:\"\";position:absolute;z-index:-1;left:50%;bottom:-9px;width:0;height:0;transform:translateX(-50%);border-left:7px solid transparent;border-right:7px solid transparent;border-top:8px solid #fff}",
-        ".popup{position:absolute;z-index:1001;left:50%;bottom:calc(var(--marker-size,56px) + 12px);width:min(280px,70vw);transform:translateX(-50%);border:1px solid #c7d0d8;border-radius:8px;padding:4px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.8),0 6px 24px rgba(20,31,43,.24);display:none}",
+        ".popup{position:absolute;z-index:1001;left:50%;bottom:calc(var(--marker-size,56px) + 12px);width:min(560px,80vw);transform:translateX(-50%);border:1px solid #c7d0d8;border-radius:8px;padding:4px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.8),0 6px 24px rgba(20,31,43,.24);display:none}",
         ".marker.open .popup{display:block}",
-        ".popup img{display:block;width:100%;height:auto;border-radius:5px;background:#f1f4f6}",
+        ".popup img{display:block;width:auto;max-width:100%;height:auto;max-height:calc(80vh - 88px);image-rendering:optimizeQuality;image-rendering:-webkit-optimize-contrast;border-radius:5px;background:#f1f4f6}",
         ".popup b{display:block;margin-top:5px;color:#1f2933;font-size:13px;line-height:1.25;overflow-wrap:anywhere}",
         ".popup span{display:none}",
         ".badge{position:fixed;left:12px;bottom:12px;max-width:min(520px,calc(100% - 24px));border:1px solid rgba(150,163,175,.55);border-radius:8px;padding:8px 10px;background:rgba(255,255,255,.92);font-size:13px;box-shadow:0 5px 20px rgba(20,31,43,.12)}",
@@ -1191,6 +1386,11 @@
       stage.appendChild(surface);
       doc.body.appendChild(stage);
 
+      const floatingPopup = doc.createElement("div");
+      floatingPopup.className = "floating-popup";
+      floatingPopup.id = "floatingPopup";
+      doc.body.appendChild(floatingPopup);
+
       const aspect = payload.imageAspect || 1;
       payload.imagePhotos.forEach((photo) => {
         const marker = doc.createElement("button");
@@ -1199,7 +1399,9 @@
         marker.style.left = `${(photo.displayLon / aspect) * 100}%`;
         marker.style.top = `${(1 - photo.displayLat) * 100}%`;
         marker.setAttribute("aria-label", photo.name);
-        marker.innerHTML = `<img src="${photo.thumb}" alt=""><div class="popup"><img src="${photo.src}" alt=""><b>${escapeHtml(photo.name)}</b><span>${photo.lat.toFixed(6)}, ${photo.lon.toFixed(6)}</span></div>`;
+        marker.dataset.fullsrc = photo.src;
+        marker.dataset.name = photo.name;
+        marker.innerHTML = `<img src="${photo.thumb}" alt="">`;
         overlay.appendChild(marker);
       });
 
@@ -1215,21 +1417,26 @@
 
       const script = doc.createElement("script");
       script.textContent = [
-        "var stage=document.querySelector('.stage'),surface=document.querySelector('.surface'),value=document.getElementById('value');",
+        "var stage=document.querySelector('.stage'),surface=document.querySelector('.surface'),value=document.getElementById('value'),floatingPopup=document.getElementById('floatingPopup');",
         "var view={zoom:1,panX:0,panY:0,dragging:false,dragStartX:0,dragStartY:0,startPanX:0,startPanY:0};",
         "function clamp(v,min,max){return Math.min(max,Math.max(min,v));}",
         "function apply(){surface.style.transform='translate('+view.panX+'px, '+view.panY+'px) scale('+view.zoom+')';value.textContent=Math.round(view.zoom*100)+'%';}",
         "function zoomAt(x,y,factor){var old=view.zoom,next=clamp(old*factor,.5,6);if(next===old)return;var rect=surface.getBoundingClientRect();var baseLeft=rect.left-view.panX,baseTop=rect.top-view.panY;var localX=(x-rect.left)/old,localY=(y-rect.top)/old;view.zoom=next;view.panX=x-baseLeft-localX*next;view.panY=y-baseTop-localY*next;apply();}",
         "function zoomCenter(factor){var rect=stage.getBoundingClientRect();zoomAt(rect.left+rect.width/2,rect.top+rect.height/2,factor);}",
-        "stage.addEventListener('wheel',function(event){event.preventDefault();zoomAt(event.clientX,event.clientY,event.deltaY<0?1.12:.89);},{passive:false});",
-        "stage.addEventListener('pointerdown',function(event){if(event.button!==0||event.target.closest('.marker'))return;view.dragging=true;view.dragStartX=event.clientX;view.dragStartY=event.clientY;view.startPanX=view.panX;view.startPanY=view.panY;stage.classList.add('dragging');stage.setPointerCapture(event.pointerId);});",
+        "function setPopupZoom(zoomWrap,scale,event){var img=zoomWrap.querySelector('img');if(!img)return;var old=Number(zoomWrap.dataset.scale||1),next=clamp(scale,1,5),rect=zoomWrap.getBoundingClientRect(),originX=event?event.clientX-rect.left:rect.width/2,originY=event?event.clientY-rect.top:rect.height/2,ratio=next/old;zoomWrap.dataset.scale=String(next);img.style.maxWidth=next===1?'':'none';img.style.maxHeight=next===1?'':'none';img.style.width=next===1?'':(next*100)+'%';img.style.height='auto';zoomWrap.scrollLeft=(zoomWrap.scrollLeft+originX)*ratio-originX;zoomWrap.scrollTop=(zoomWrap.scrollTop+originY)*ratio-originY;var value=floatingPopup.querySelector('.popup-zoom-value');if(value)value.textContent=Math.round(next*100)+'%';}",
+        "function handlePopupWheel(event){event.preventDefault();event.stopPropagation();var zoomWrap=event.currentTarget,scale=Number(zoomWrap.dataset.scale||1);setPopupZoom(zoomWrap,scale*(event.deltaY<0?1.15:.87),event);}",
+        "function handlePopupButton(event){event.stopPropagation();var zoomWrap=floatingPopup.querySelector('.zoom-wrap');if(!zoomWrap)return;var action=event.currentTarget.dataset.popupZoom,scale=Number(zoomWrap.dataset.scale||1);if(action==='in')setPopupZoom(zoomWrap,scale*1.25);if(action==='out')setPopupZoom(zoomWrap,scale*.8);if(action==='reset'){setPopupZoom(zoomWrap,1);zoomWrap.scrollLeft=0;zoomWrap.scrollTop=0;}}",
+        "function openFloatingPopup(marker){var fullsrc=marker.dataset.fullsrc,name=marker.dataset.name,popup=floatingPopup;popup.innerHTML='<div class=\"zoom-wrap\" data-scale=\"1\"><img alt=\"\"></div><div class=\"popup-tools\"><button type=\"button\" data-popup-zoom=\"out\" title=\"Zooma ut\">-</button><span class=\"popup-zoom-value\">100%</span><button type=\"button\" data-popup-zoom=\"in\" title=\"Zooma in\">+</button><button type=\"button\" data-popup-zoom=\"reset\" title=\"Återställ zoom\">100%</button></div><b></b>';var img=popup.querySelector('.zoom-wrap img');img.src=fullsrc;img.alt=name;popup.querySelector('b').textContent=name;var zoomWrap=popup.querySelector('.zoom-wrap');zoomWrap.addEventListener('wheel',handlePopupWheel,{passive:false});popup.querySelectorAll('[data-popup-zoom]').forEach(function(button){button.addEventListener('click',handlePopupButton);});popup.style.display='block';}",
+        "stage.addEventListener('wheel',function(event){if(event.target.closest('.floating-popup'))return;event.preventDefault();zoomAt(event.clientX,event.clientY,event.deltaY<0?1.12:.89);},{passive:false});",
+        "stage.addEventListener('pointerdown',function(event){if(event.button!==0||event.target.closest('.marker')||event.target.closest('.floating-popup'))return;view.dragging=true;view.dragStartX=event.clientX;view.dragStartY=event.clientY;view.startPanX=view.panX;view.startPanY=view.panY;stage.classList.add('dragging');stage.setPointerCapture(event.pointerId);});",
         "window.addEventListener('pointermove',function(event){if(!view.dragging)return;view.panX=view.startPanX+event.clientX-view.dragStartX;view.panY=view.startPanY+event.clientY-view.dragStartY;apply();});",
         "window.addEventListener('pointerup',function(){view.dragging=false;stage.classList.remove('dragging');});",
-        "stage.addEventListener('dblclick',function(event){event.preventDefault();zoomAt(event.clientX,event.clientY,1.8);});",
+        "stage.addEventListener('dblclick',function(event){if(event.target.closest('.floating-popup'))return;event.preventDefault();zoomAt(event.clientX,event.clientY,1.8);});",
         "document.getElementById('in').addEventListener('click',function(){zoomCenter(1.25);});",
         "document.getElementById('out').addEventListener('click',function(){zoomCenter(.8);});",
         "document.getElementById('fit').addEventListener('click',function(){view.zoom=1;view.panX=0;view.panY=0;apply();});",
-        "document.addEventListener('click',function(event){var marker=event.target.closest('.marker');document.querySelectorAll('.marker.open').forEach(function(open){if(open!==marker)open.classList.remove('open');});if(marker)marker.classList.toggle('open');});",
+        "document.querySelectorAll('.marker').forEach(function(marker){marker.addEventListener('click',function(event){event.stopPropagation();openFloatingPopup(marker);document.querySelectorAll('.marker.open').forEach(function(open){if(open!==marker)open.classList.remove('open');});marker.classList.add('open');});});",
+        "document.addEventListener('click',function(event){if(!event.target.closest('.floating-popup')&&!event.target.closest('.marker')){floatingPopup.style.display='none';document.querySelectorAll('.marker.open').forEach(function(open){open.classList.remove('open');});}});",
         "apply();"
       ].join("");
       doc.body.appendChild(script);
