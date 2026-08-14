@@ -79,6 +79,21 @@
       will-change: transform;
     }
 
+    .image-surface.no-map {
+      width: min(720px, calc(100vw - 430px));
+      aspect-ratio: var(--photo-box-aspect, 1.35);
+      background:
+        linear-gradient(90deg, rgba(150, 163, 175, .18) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(150, 163, 175, .18) 1px, transparent 1px),
+        #eef3f5;
+      background-size: 64px 64px;
+      border: 1px solid rgba(150, 163, 175, .45);
+    }
+
+    .image-surface.no-map > img {
+      display: none;
+    }
+
     .image-surface img {
       display: block;
       max-width: min(100%, calc(100vw - 430px));
@@ -159,7 +174,7 @@
       width: min(560px, 80vw);
       border: 1px solid #c7d0d8;
       border-radius: 8px;
-      padding: 4px;
+      padding: 4px 12px 12px 4px;
       background: #ffffff;
       box-shadow: 0 0 0 1px rgba(0, 0, 0, .8), 0 6px 24px rgba(20, 31, 43, .24);
       display: none;
@@ -168,13 +183,39 @@
       overflow: hidden;
     }
 
+    .floating-popup .popup-close {
+      position: absolute;
+      z-index: 2;
+      top: 8px;
+      right: 8px;
+      width: 28px;
+      height: 28px;
+      min-width: 28px;
+      min-height: 28px;
+      padding: 0;
+      border: 1px solid rgba(31, 41, 51, .28);
+      border-radius: 50%;
+      background: rgba(255, 255, 255, .92);
+      color: #1f2933;
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(20, 31, 43, .2);
+    }
+
+    .floating-popup .popup-close:hover {
+      background: #ffffff;
+      border-color: rgba(31, 41, 51, .5);
+    }
+
     .floating-popup .zoom-wrap {
       position: relative;
       overflow: auto;
       border-radius: 5px;
       background: #f1f4f6;
       width: 100%;
-      max-height: calc(80vh - 150px);
+      height: calc(80vh - 72px);
+      max-height: calc(80vh - 72px);
     }
 
     .floating-popup .zoom-wrap img {
@@ -182,13 +223,13 @@
       width: auto;
       max-width: 100%;
       height: auto;
-      max-height: calc(80vh - 150px);
+      max-height: calc(80vh - 72px);
       image-rendering: optimizeQuality;
       image-rendering: -webkit-optimize-contrast;
     }
 
     .floating-popup .popup-tools {
-      display: flex;
+      display: none;
       align-items: center;
       gap: 6px;
       margin-top: 6px;
@@ -212,30 +253,32 @@
       font-size: 13px;
     }
 
-    .floating-popup b {
-      display: block;
+    .floating-popup .popup-meta {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(150px, 38%);
+      align-items: center;
+      gap: 8px;
       margin-top: 8px;
-      color: #1f2933;
-      font-size: 13px;
-      line-height: 1.25;
-      overflow-wrap: anywhere;
-    }
-
-    .floating-popup span {
-      display: none;
+      padding-bottom: 2px;
     }
 
     .floating-popup b {
-      display: block;
-      margin-top: 5px;
       color: #1f2933;
       font-size: 13px;
       line-height: 1.25;
       overflow-wrap: anywhere;
     }
 
-    .floating-popup span {
-      display: none;
+    .floating-popup .photo-title {
+      width: 100%;
+      min-height: 32px;
+      border: 1px solid #b8c4ce;
+      border-radius: 6px;
+      padding: 5px 8px;
+      color: #1f2933;
+      font: inherit;
+      font-size: 13px;
+      background: #ffffff;
     }
 
     .image-photo.open {
@@ -668,11 +711,6 @@
           <div class="hint">Storleken på miniaturen som används för fotomarkörer.</div>
         </div>
         <div class="field">
-          <label for="maxSize">Maxsida, px <span id="maxSizeValue">1500</span></label>
-          <input type="range" id="maxSize" min="1000" max="3000" step="100" value="1500">
-          <div class="hint">Maximal bildstorlek för popup-bilden.</div>
-        </div>
-        <div class="field">
           <label for="quality">Kvalitet <span id="qualityValue">0.85</span></label>
           <input type="range" id="quality" min="0.45" max="0.95" step="0.01" value="0.85">
           <div class="hint">Komprimeringskvalitet för popup-bilden.</div>
@@ -686,6 +724,7 @@
 
       <div class="actions">
         <button id="downloadBtn" disabled>Ladda ner HTML</button>
+        <button id="downloadExcelBtn" disabled>Ladda ner Excel</button>
         <button class="secondary" id="resetBtn">Rensa</button>
       </div>
     </aside>
@@ -711,12 +750,16 @@
   <script src="https://unpkg.com/proj4@2.11.0/dist/proj4.js"></script>
   <script src="https://unpkg.com/georaster"></script>
   <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
   <script>
+    const MAX_POPUP_IMAGE_SIDE = 1200;
+
     const state = {
       geotiff: null,
       geotiffArrayBuffer: null,
       geotiffName: "",
       imageDataUrl: "",
+      photoBoxAspect: 1.35,
       photos: [],
       skipped: [],
       objectUrls: [],
@@ -738,11 +781,10 @@
       geotiffFileName: document.getElementById("geotiffFileName"),
       imageFileName: document.getElementById("imageFileName"),
       downloadBtn: document.getElementById("downloadBtn"),
+      downloadExcelBtn: document.getElementById("downloadExcelBtn"),
       resetBtn: document.getElementById("resetBtn"),
       thumbSize: document.getElementById("thumbSize"),
       thumbSizeValue: document.getElementById("thumbSizeValue"),
-      maxSize: document.getElementById("maxSize"),
-      maxSizeValue: document.getElementById("maxSizeValue"),
       quality: document.getElementById("quality"),
       qualityValue: document.getElementById("qualityValue"),
       log: document.getElementById("log"),
@@ -763,9 +805,6 @@
     els.thumbSize.addEventListener("input", () => {
       updateMarkerSize();
       renderPhotos();
-    });
-    els.maxSize.addEventListener("input", () => {
-      els.maxSizeValue.textContent = `${els.maxSize.value} px`;
     });
     els.quality.addEventListener("input", () => {
       els.qualityValue.textContent = Number(els.quality.value).toFixed(2);
@@ -800,6 +839,7 @@
     });
 
     els.downloadBtn.addEventListener("click", downloadStandaloneHtml);
+    els.downloadExcelBtn.addEventListener("click", downloadExcel);
     els.resetBtn.addEventListener("click", resetAll);
     window.addEventListener("error", (event) => {
       addLog(`Fel: ${event.message}`, "bad");
@@ -819,6 +859,13 @@
       item.className = `log-item ${type}`;
       item.textContent = message;
       els.log.prepend(item);
+      return item;
+    }
+
+    function updateLog(item, message, type = "good") {
+      if (!item) return;
+      item.className = `log-item ${type}`;
+      item.textContent = message;
     }
 
     function updateFileLabels() {
@@ -902,12 +949,14 @@
       state.imageDataUrl = await georasterToImageDataUrl(georaster);
       els.imageMap.src = state.imageDataUrl;
       els.imageMap.style.aspectRatio = `${georaster.width} / ${georaster.height}`;
+      els.imageSurface.classList.remove("no-map");
+      els.imageSurface.style.removeProperty("--photo-box-aspect");
       els.imageOverlay.innerHTML = "";
       resetView();
     }
 
     function handleWheel(event) {
-      if (!state.imageDataUrl) return;
+      if (!hasDisplaySurface()) return;
       event.preventDefault();
       const factor = event.deltaY < 0 ? 1.12 : 0.89;
       zoomAtPoint(event.clientX, event.clientY, factor);
@@ -936,7 +985,7 @@
     }
 
     function startPan(event) {
-      if (!state.imageDataUrl || event.button !== 0 || event.target.closest(".image-photo") || event.target.closest('.floating-popup')) return;
+      if (!hasDisplaySurface() || event.button !== 0 || event.target.closest(".image-photo") || event.target.closest('.floating-popup')) return;
       state.view.dragging = true;
       state.view.dragStartX = event.clientX;
       state.view.dragStartY = event.clientY;
@@ -968,6 +1017,10 @@
     function applyImageTransform() {
       els.imageSurface.style.transform = `translate(${state.view.panX}px, ${state.view.panY}px) scale(${state.view.zoom})`;
       els.zoomValue.textContent = `${Math.round(state.view.zoom * 100)}%`;
+    }
+
+    function hasDisplaySurface() {
+      return Boolean(state.imageDataUrl || state.photos.length);
     }
 
     function clamp(value, min, max) {
@@ -1061,12 +1114,13 @@
         return;
       }
 
-      addLog(`Bearbetar ${files.length} bild(er)...`, "good");
+      const progressLog = addLog(`Bearbetar bild 0 av ${files.length}...`, "good");
       const quality = Number(els.quality.value);
-      const maxSize = Math.min(Math.round(Number(els.maxSize.value) * (window.devicePixelRatio || 1)), 3600);
+      const maxSize = MAX_POPUP_IMAGE_SIDE;
       const thumbSize = Math.max(160, Math.round(Number(els.thumbSize.value) * 2));
 
-      for (const file of files) {
+      for (const [index, file] of files.entries()) {
+        updateLog(progressLog, `Bearbetar bild ${index + 1} av ${files.length}: ${file.name}`, "good");
         try {
           const gps = await readGps(file);
           if (!gps) {
@@ -1082,8 +1136,12 @@
           state.photos.push({
             id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${state.photos.length}`,
             name: file.name,
+            title: "",
             lat: gps.lat,
             lon: gps.lon,
+            accuracy: gps.accuracy,
+            startDate: gps.startDate,
+            startTime: gps.startTime,
             src: image.dataUrl,
             thumb: thumb.dataUrl,
             fullSrc,
@@ -1098,7 +1156,7 @@
         }
       }
 
-      addLog(`${state.photos.length} placerade, ${state.skipped.length} ignorerade.`, state.photos.length ? "good" : "warn");
+      updateLog(progressLog, `Bildbearbetning klar: ${state.photos.length} placerade, ${state.skipped.length} ignorerade.`, state.photos.length ? "good" : "warn");
     }
 
     function readGps(file) {
@@ -1112,6 +1170,11 @@
           const lon = EXIF.getTag(this, "GPSLongitude");
           const latRef = EXIF.getTag(this, "GPSLatitudeRef") || "N";
           const lonRef = EXIF.getTag(this, "GPSLongitudeRef") || "E";
+          const dateTime = EXIF.getTag(this, "DateTimeOriginal")
+            || EXIF.getTag(this, "DateTimeDigitized")
+            || EXIF.getTag(this, "DateTime");
+          const parsedDateTime = parseExifDateTime(dateTime);
+          const accuracy = rationalToNumber(EXIF.getTag(this, "GPSHPositioningError"));
 
           if (!lat || !lon) {
             resolve(null);
@@ -1120,10 +1183,32 @@
 
           resolve({
             lat: dmsToDecimal(lat, latRef),
-            lon: dmsToDecimal(lon, lonRef)
+            lon: dmsToDecimal(lon, lonRef),
+            accuracy: Number.isFinite(accuracy) ? accuracy : "",
+            startDate: parsedDateTime.date,
+            startTime: parsedDateTime.time
           });
         });
       });
+    }
+
+    function parseExifDateTime(value) {
+      const text = String(value || "").trim();
+      const match = text.match(/^(\d{4}):(\d{2}):(\d{2})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+      if (!match) return { date: "", time: "" };
+      const [, year, month, day, hour = "", minute = "", second = ""] = match;
+      return {
+        date: `${year}-${month}-${day}`,
+        time: hour && minute ? `${hour}:${minute}:${second || "00"}` : ""
+      };
+    }
+
+    function rationalToNumber(value) {
+      if (typeof value === "number") return value;
+      if (value && typeof value.numerator === "number" && typeof value.denominator === "number") {
+        return value.denominator ? value.numerator / value.denominator : NaN;
+      }
+      return NaN;
     }
 
     function dmsToDecimal(value, ref) {
@@ -1173,9 +1258,10 @@
     function renderPhotos() {
       els.imageOverlay.innerHTML = "";
       const placed = computeDisplayPositions(state.photos);
+      updateDisplaySurface();
 
       placed.forEach((photo) => {
-        const aspect = state.geotiff ? state.geotiff.width / state.geotiff.height : 1;
+        const aspect = getDisplayAspect();
         const marker = document.createElement("button");
         marker.type = "button";
         marker.className = "image-photo";
@@ -1196,9 +1282,32 @@
       });
     }
 
+    function updateDisplaySurface() {
+      if (state.imageDataUrl) {
+        els.imageSurface.classList.remove("no-map");
+        els.imageSurface.style.removeProperty("--photo-box-aspect");
+        return;
+      }
+
+      els.imageMap.removeAttribute("src");
+      if (!state.photos.length) {
+        els.imageSurface.classList.remove("no-map");
+        els.imageSurface.style.removeProperty("--photo-box-aspect");
+        return;
+      }
+
+      els.imageSurface.classList.add("no-map");
+      els.imageSurface.style.setProperty("--photo-box-aspect", state.photoBoxAspect);
+    }
+
+    function getDisplayAspect() {
+      return state.geotiff ? state.geotiff.width / state.geotiff.height : state.photoBoxAspect;
+    }
+
     function openFloatingPopup(photo, marker) {
       const popup = els.floatingPopup;
       popup.innerHTML = `
+        <button type="button" class="popup-close" title="Stäng" aria-label="Stäng">×</button>
         <div class="zoom-wrap" data-scale="1">
           <img src="${photo.fullSrc}" width="${photo.originalWidth}" height="${photo.originalHeight}" alt="">
         </div>
@@ -1208,33 +1317,76 @@
           <button type="button" data-popup-zoom="in" title="Zooma in">+</button>
           <button type="button" data-popup-zoom="reset" title="Återställ zoom">100%</button>
         </div>
-        <b>${escapeHtml(photo.name)}</b>
+        <div class="popup-meta">
+          <b>${escapeHtml(photo.name)}</b>
+          <input class="photo-title" type="text" value="${escapeHtml(photo.title || "")}" placeholder="Titel" aria-label="Titel">
+        </div>
       `;
       const zoomWrap = popup.querySelector(".zoom-wrap");
+      const img = zoomWrap.querySelector("img");
+      const titleInput = popup.querySelector(".photo-title");
       zoomWrap.addEventListener("wheel", handlePopupWheel, { passive: false });
-      popup.querySelectorAll("[data-popup-zoom]").forEach((button) => {
-        button.addEventListener("click", handlePopupButton);
+      titleInput.addEventListener("input", () => {
+        updatePhotoTitle(photo.id, titleInput.value);
+        photo.title = titleInput.value;
+      });
+      popup.querySelector(".popup-close").addEventListener("click", (event) => {
+        event.stopPropagation();
+        closeFloatingPopup();
       });
       popup.style.display = "block";
+      img.addEventListener("load", () => fitPopupImageToFrame(zoomWrap), { once: true });
+      if (img.complete) fitPopupImageToFrame(zoomWrap);
       els.imageOverlay.querySelectorAll(".image-photo.open").forEach((openMarker) => {
         if (openMarker !== marker) openMarker.classList.remove("open");
       });
       marker.classList.add("open");
     }
 
+    function updatePhotoTitle(photoId, title) {
+      const sourcePhoto = state.photos.find((item) => item.id === photoId);
+      if (sourcePhoto) sourcePhoto.title = title;
+    }
+
+    function closeFloatingPopup() {
+      els.floatingPopup.style.display = "none";
+      els.floatingPopup.innerHTML = "";
+      els.imageOverlay.querySelectorAll(".image-photo.open").forEach((openMarker) => {
+        openMarker.classList.remove("open");
+      });
+    }
+
+    function fitPopupImageToFrame(zoomWrap) {
+      const img = zoomWrap.querySelector("img");
+      if (!img) return;
+      img.style.maxWidth = "none";
+      img.style.maxHeight = "none";
+      img.style.height = "auto";
+      zoomWrap.dataset.scale = "1";
+      const rect = zoomWrap.getBoundingClientRect();
+      if (!rect.width || !rect.height || !img.naturalWidth || !img.naturalHeight) return;
+      const baseHeight = rect.width * (img.naturalHeight / img.naturalWidth);
+      const minScale = clamp(Math.max(1, rect.height / baseHeight), 1, 5);
+      zoomWrap.dataset.minScale = String(minScale);
+      setPopupZoom(zoomWrap, minScale);
+      zoomWrap.scrollLeft = Math.max(0, (img.scrollWidth - zoomWrap.clientWidth) / 2);
+      zoomWrap.scrollTop = Math.max(0, (img.scrollHeight - zoomWrap.clientHeight) / 2);
+    }
+
     function setPopupZoom(zoomWrap, scale, event) {
       const img = zoomWrap.querySelector('img');
       if (!img) return;
       const oldScale = Number(zoomWrap.dataset.scale || 1);
-      const nextScale = clamp(scale, 1, 5);
+      const minScale = Number(zoomWrap.dataset.minScale || 1);
+      const nextScale = clamp(scale, minScale, 5);
       const rect = zoomWrap.getBoundingClientRect();
       const originX = event ? event.clientX - rect.left : rect.width / 2;
       const originY = event ? event.clientY - rect.top : rect.height / 2;
       const ratio = nextScale / oldScale;
       zoomWrap.dataset.scale = String(nextScale);
-      img.style.maxWidth = nextScale === 1 ? "" : "none";
-      img.style.maxHeight = nextScale === 1 ? "" : "none";
-      img.style.width = nextScale === 1 ? "" : `${nextScale * 100}%`;
+      img.style.maxWidth = "none";
+      img.style.maxHeight = "none";
+      img.style.width = `${nextScale * 100}%`;
       img.style.height = "auto";
       zoomWrap.scrollLeft = (zoomWrap.scrollLeft + originX) * ratio - originX;
       zoomWrap.scrollTop = (zoomWrap.scrollTop + originY) * ratio - originY;
@@ -1274,9 +1426,11 @@
     function computeDisplayPositions(photos) {
       const groups = new Map();
       const rounded = 4;
+      const photoBounds = state.geotiff ? null : computePhotoBounds(photos);
+      if (photoBounds) state.photoBoxAspect = photoBounds.aspect;
 
       photos.forEach((photo) => {
-        const point = getPhotoMapPoint(photo);
+        const point = getPhotoMapPoint(photo, photoBounds);
         if (!point) return;
         const mapped = { ...photo, exactLat: point.lat, exactLon: point.lon };
         const key = `${point.lat.toFixed(rounded)},${point.lon.toFixed(rounded)}`;
@@ -1308,12 +1462,42 @@
       return result;
     }
 
-    function getPhotoMapPoint(photo) {
-      return photoToImagePoint(photo);
+    function computePhotoBounds(photos) {
+      const positioned = photos.filter((photo) => Number.isFinite(photo.lat) && Number.isFinite(photo.lon));
+      if (!positioned.length) return null;
+
+      let minLat = Math.min(...positioned.map((photo) => photo.lat));
+      let maxLat = Math.max(...positioned.map((photo) => photo.lat));
+      let minLon = Math.min(...positioned.map((photo) => photo.lon));
+      let maxLon = Math.max(...positioned.map((photo) => photo.lon));
+      const centerLat = (minLat + maxLat) / 2;
+      const latSpan = Math.max(maxLat - minLat, 0.002);
+      const lonSpan = Math.max(maxLon - minLon, 0.002 / Math.max(Math.cos(centerLat * Math.PI / 180), 0.2));
+      const latPadding = latSpan * 0.12;
+      const lonPadding = lonSpan * 0.12;
+      minLat -= latPadding;
+      maxLat += latPadding;
+      minLon -= lonPadding;
+      maxLon += lonPadding;
+
+      const paddedLatSpan = maxLat - minLat;
+      const paddedLonSpan = maxLon - minLon;
+      const aspect = clamp(
+        (paddedLonSpan * Math.max(Math.cos(centerLat * Math.PI / 180), 0.2)) / paddedLatSpan,
+        0.75,
+        1.8
+      );
+
+      return { minLat, maxLat, minLon, maxLon, aspect };
     }
 
-    function photoToImagePoint(photo) {
-      if (!state.geotiff || !window.proj4) return null;
+    function getPhotoMapPoint(photo, photoBounds = null) {
+      return photoToImagePoint(photo, photoBounds);
+    }
+
+    function photoToImagePoint(photo, photoBounds = null) {
+      if (!state.geotiff) return photoToFallbackPoint(photo, photoBounds);
+      if (!window.proj4) return null;
       const projection = state.geotiff.projection || 4326;
       let projected;
       try {
@@ -1341,13 +1525,29 @@
       };
     }
 
+    function photoToFallbackPoint(photo, photoBounds) {
+      if (!photoBounds) return null;
+      const latSpan = photoBounds.maxLat - photoBounds.minLat;
+      const lonSpan = photoBounds.maxLon - photoBounds.minLon;
+      if (!latSpan || !lonSpan) return null;
+      const xRatio = (photo.lon - photoBounds.minLon) / lonSpan;
+      const yRatio = (photoBounds.maxLat - photo.lat) / latSpan;
+      if (xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1) return null;
+
+      return {
+        lat: 1 - yRatio,
+        lon: xRatio * photoBounds.aspect
+      };
+    }
+
     function updateUi() {
       els.downloadBtn.disabled = !state.imageDataUrl && !state.photos.length;
+      els.downloadExcelBtn.disabled = !state.photos.length;
       if (!state.photos.length && els.floatingPopup) {
         els.floatingPopup.style.display = "none";
       }
 
-      const mapText = state.imageDataUrl ? `GeoTIFF: ${state.geotiffName}` : "Ingen kartbild visas.";
+      const mapText = state.imageDataUrl ? `GeoTIFF: ${state.geotiffName}` : "Ingen karta vald, visar foton efter GPS-position.";
       const photoText = state.photos.length ? `${state.photos.length} foton placerade.` : "Inga foton placerade ännu.";
       els.mapBadge.textContent = `${mapText} ${photoText}`;
 
@@ -1362,10 +1562,13 @@
       state.geotiffArrayBuffer = null;
       state.geotiffName = "";
       state.imageDataUrl = "";
+      state.photoBoxAspect = 1.35;
       state.photos = [];
       state.skipped = [];
       cleanupPhotoUrls();
       els.imageMap.removeAttribute("src");
+      els.imageSurface.classList.remove("no-map");
+      els.imageSurface.style.removeProperty("--photo-box-aspect");
       els.imageOverlay.innerHTML = "";
       if (els.floatingPopup) {
         els.floatingPopup.style.display = "none";
@@ -1380,13 +1583,14 @@
     }
 
     async function downloadStandaloneHtml() {
+      const imagePhotos = computeDisplayPositions(state.photos);
       const payload = {
         exportedAt: new Date().toISOString(),
         geotiffName: state.geotiffName,
         markerSize: Number(els.thumbSize.value) || 56,
         imageDataUrl: state.imageDataUrl,
-        imageAspect: state.geotiff ? state.geotiff.width / state.geotiff.height : 1,
-        imagePhotos: computeDisplayPositions(state.photos),
+        imageAspect: getDisplayAspect(),
+        imagePhotos,
         photos: state.photos
       };
 
@@ -1402,12 +1606,108 @@
       addLog(`Exporterade ${downloadName}.`, "good");
     }
 
+    function downloadExcel() {
+      if (!state.photos.length) return;
+      if (!window.XLSX) {
+        addLog("Kunde inte skapa Excel: XLSX-biblioteket laddades inte.", "bad");
+        return;
+      }
+      if (!window.proj4) {
+        addLog("Kunde inte skapa Excel: proj4-biblioteket laddades inte.", "bad");
+        return;
+      }
+
+      const headers = [
+        "Artnamn",
+        "Antal",
+        "Enhet",
+        "Lokalnamn",
+        "lat",
+        "lon",
+        "Ost",
+        "Nord",
+        "Noggrannhet",
+        "Startdatum",
+        "Starttid",
+        "Publik kommentar",
+        "Biotop",
+        "Art som substrat",
+        "Substrat",
+        "Substrat-beskrivning",
+        "Aktivitet",
+        "Ålder-Stadium",
+        "Kön"
+      ];
+
+      const localName = state.geotiffName ? getBaseFileName(state.geotiffName) : "";
+      const rows = [...state.photos].sort(comparePhotosByDateTime).map((photo) => {
+        const [east, north] = getSweref99Position(photo);
+        return {
+          "Artnamn": photo.title || "",
+          "Antal": "",
+          "Enhet": "",
+          "Lokalnamn": localName,
+          "lat": roundCoordinate(photo.lat),
+          "lon": roundCoordinate(photo.lon),
+          "Ost": Number.isFinite(east) ? Math.round(east) : "",
+          "Nord": Number.isFinite(north) ? Math.round(north) : "",
+          "Noggrannhet": Number.isFinite(photo.accuracy) ? photo.accuracy : "",
+          "Startdatum": photo.startDate || "",
+          "Starttid": photo.startTime || "",
+          "Publik kommentar": "",
+          "Biotop": "",
+          "Art som substrat": "",
+          "Substrat": "",
+          "Substrat-beskrivning": "",
+          "Aktivitet": "",
+          "Ålder-Stadium": "",
+          "Kön": ""
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Observationer");
+      worksheet["!cols"] = headers.map((header) => ({ wch: Math.max(12, header.length + 2) }));
+      const downloadName = buildExcelFileName(state.geotiffName);
+      XLSX.writeFile(workbook, downloadName);
+      addLog(`Exporterade ${downloadName}.`, "good");
+    }
+
+    function comparePhotosByDateTime(a, b) {
+      const aKey = `${a.startDate || "9999-99-99"} ${a.startTime || "99:99:99"}`;
+      const bKey = `${b.startDate || "9999-99-99"} ${b.startTime || "99:99:99"}`;
+      return aKey.localeCompare(bKey) || a.name.localeCompare(b.name);
+    }
+
+    function getSweref99Position(photo) {
+      try {
+        if (!Number.isFinite(photo.lat) || !Number.isFinite(photo.lon)) return [NaN, NaN];
+        return proj4("EPSG:4326", "EPSG:3006", [photo.lon, photo.lat]);
+      } catch (error) {
+        return [NaN, NaN];
+      }
+    }
+
+    function roundCoordinate(value) {
+      return Number.isFinite(value) ? Number(value.toFixed(7)) : "";
+    }
+
+    function buildExcelFileName(geotiffName) {
+      const baseName = getBaseFileName(geotiffName || "bilder");
+      return `Fotokarta_${baseName}.xlsx`;
+    }
+
     function buildDownloadFileName(geotiffName) {
-      const baseName = (geotiffName || "karta")
+      const baseName = getBaseFileName(geotiffName || "karta");
+      return `Fotokarta_${baseName}.html`;
+    }
+
+    function getBaseFileName(fileName) {
+      return String(fileName || "")
         .replace(/\.[^/.\\]+$/, "")
         .replace(/[<>:"/\\|?*\x00-\x1F]/g, "_")
-        .trim() || "karta";
-      return `Fotokarta_${baseName}.html`;
+        .trim();
     }
 
     function buildStandaloneImageHtml(payload) {
@@ -1429,15 +1729,21 @@
         ".stage{min-height:100vh;overflow:auto;padding:42px;display:flex;align-items:center;justify-content:center;cursor:grab;user-select:none;touch-action:none}",
         ".stage.dragging{cursor:grabbing}",
         ".surface{position:relative;flex:0 0 auto;background:#fff;box-shadow:0 8px 28px rgba(20,31,43,.18);transform-origin:0 0;will-change:transform}",
+        ".surface.no-map{width:min(720px,calc(100vw - 84px));aspect-ratio:var(--photo-box-aspect,1.35);background:linear-gradient(90deg,rgba(150,163,175,.18) 1px,transparent 1px),linear-gradient(0deg,rgba(150,163,175,.18) 1px,transparent 1px),#eef3f5;background-size:64px 64px;border:1px solid rgba(150,163,175,.45)}",
+        ".surface.no-map>img{display:none}",
         ".surface>img{display:block;max-width:calc(100vw - 84px);max-height:calc(100vh - 84px);width:auto;height:auto;object-fit:contain}",
         ".overlay{position:absolute;inset:0;pointer-events:none}",
-        ".floating-popup{position:fixed;z-index:1002;right:16px;top:16px;width:min(520px,75vw);max-height:calc(80vh - 32px);border:1px solid #c7d0d8;border-radius:8px;padding:8px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.8),0 6px 24px rgba(20,31,43,.24);display:none;pointer-events:auto;overflow:hidden}",
-        ".floating-popup .zoom-wrap{position:relative;overflow:auto;width:100%;max-height:calc(80vh - 150px);background:#f1f4f6;border-radius:6px}",
-        ".floating-popup .zoom-wrap img{display:block;width:auto;max-width:100%;height:auto;max-height:calc(80vh - 150px);image-rendering:optimizeQuality;image-rendering:-webkit-optimize-contrast}",
-        ".floating-popup .popup-tools{display:flex;align-items:center;gap:6px;margin-top:6px}",
+        ".floating-popup{position:fixed;z-index:1002;right:16px;top:16px;width:min(520px,75vw);max-height:calc(80vh - 32px);border:1px solid #c7d0d8;border-radius:8px;padding:8px 16px 14px 8px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.8),0 6px 24px rgba(20,31,43,.24);display:none;pointer-events:auto;overflow:hidden}",
+        ".floating-popup .popup-close{position:absolute;z-index:2;top:8px;right:8px;width:28px;height:28px;min-width:28px;min-height:28px;padding:0;border:1px solid rgba(31,41,51,.28);border-radius:50%;background:rgba(255,255,255,.92);color:#1f2933;font-size:20px;line-height:1;cursor:pointer;box-shadow:0 2px 8px rgba(20,31,43,.2)}",
+        ".floating-popup .popup-close:hover{background:#fff;border-color:rgba(31,41,51,.5)}",
+        ".floating-popup .zoom-wrap{position:relative;overflow:auto;width:100%;height:calc(80vh - 72px);max-height:calc(80vh - 72px);background:#f1f4f6;border-radius:6px}",
+        ".floating-popup .zoom-wrap img{display:block;width:auto;max-width:100%;height:auto;max-height:calc(80vh - 72px);image-rendering:optimizeQuality;image-rendering:-webkit-optimize-contrast}",
+        ".floating-popup .popup-tools{display:none;align-items:center;gap:6px;margin-top:6px}",
         ".floating-popup .popup-tools button{height:30px;min-width:32px;border:1px solid #b8c4ce;border-radius:6px;background:#fff;color:#263440;font-weight:700;cursor:pointer}",
         ".floating-popup .popup-tools .popup-zoom-value{min-width:48px;text-align:center;color:#34424f;font-size:13px}",
-        ".floating-popup b{display:block;margin-top:6px;color:#1f2933;font-size:13px;line-height:1.25;overflow-wrap:anywhere}",
+        ".floating-popup .popup-meta{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,38%);align-items:center;gap:8px;margin-top:8px;padding-bottom:2px}",
+        ".floating-popup b{color:#1f2933;font-size:13px;line-height:1.25;overflow-wrap:anywhere}",
+        ".floating-popup .photo-title{width:100%;min-height:32px;border:1px solid #b8c4ce;border-radius:6px;padding:5px 8px;color:#1f2933;font:inherit;font-size:13px;background:#fff}",
         ".marker{position:absolute;width:var(--marker-size,56px);height:var(--marker-size,56px);min-width:0;min-height:0;transform:translate(-50%,-100%);border:2px solid #fff;border-radius:8px;box-shadow:0 0 0 1px rgba(0,0,0,.8),0 3px 12px rgba(20,31,43,.35);background:transparent;cursor:pointer;pointer-events:auto;padding:0;overflow:visible;z-index:1}",
         ".marker.open{z-index:1000}",
         ".marker>img{width:100%;height:100%;object-fit:cover;border-radius:7px}",
@@ -1461,8 +1767,12 @@
       const surface = doc.createElement("div");
       surface.className = "surface";
       surface.style.setProperty("--marker-size", `${payload.markerSize || 56}px`);
+      if (!payload.imageDataUrl) {
+        surface.classList.add("no-map");
+        surface.style.setProperty("--photo-box-aspect", payload.imageAspect || 1.35);
+      }
       const image = doc.createElement("img");
-      image.src = payload.imageDataUrl;
+      if (payload.imageDataUrl) image.src = payload.imageDataUrl;
       image.alt = "";
       const overlay = doc.createElement("div");
       overlay.className = "overlay";
@@ -1486,13 +1796,14 @@
         marker.setAttribute("aria-label", photo.name);
         marker.dataset.fullsrc = photo.src;
         marker.dataset.name = photo.name;
+        marker.dataset.title = photo.title || "";
         marker.innerHTML = `<img src="${photo.thumb}" alt="">`;
         overlay.appendChild(marker);
       });
 
       const badge = doc.createElement("div");
       badge.className = "badge";
-      badge.textContent = `${payload.geotiffName || "GeoTIFF"} · ${payload.imagePhotos.length} foton`;
+      badge.textContent = `${payload.geotiffName || "GPS-positioner"} · ${payload.imagePhotos.length} foton`;
       doc.body.appendChild(badge);
 
       const zoomControls = doc.createElement("div");
@@ -1508,10 +1819,12 @@
         "function apply(){surface.style.transform='translate('+view.panX+'px, '+view.panY+'px) scale('+view.zoom+')';value.textContent=Math.round(view.zoom*100)+'%';}",
         "function zoomAt(x,y,factor){var old=view.zoom,next=clamp(old*factor,.5,6);if(next===old)return;var rect=surface.getBoundingClientRect();var baseLeft=rect.left-view.panX,baseTop=rect.top-view.panY;var localX=(x-rect.left)/old,localY=(y-rect.top)/old;view.zoom=next;view.panX=x-baseLeft-localX*next;view.panY=y-baseTop-localY*next;apply();}",
         "function zoomCenter(factor){var rect=stage.getBoundingClientRect();zoomAt(rect.left+rect.width/2,rect.top+rect.height/2,factor);}",
-        "function setPopupZoom(zoomWrap,scale,event){var img=zoomWrap.querySelector('img');if(!img)return;var old=Number(zoomWrap.dataset.scale||1),next=clamp(scale,1,5),rect=zoomWrap.getBoundingClientRect(),originX=event?event.clientX-rect.left:rect.width/2,originY=event?event.clientY-rect.top:rect.height/2,ratio=next/old;zoomWrap.dataset.scale=String(next);img.style.maxWidth=next===1?'':'none';img.style.maxHeight=next===1?'':'none';img.style.width=next===1?'':(next*100)+'%';img.style.height='auto';zoomWrap.scrollLeft=(zoomWrap.scrollLeft+originX)*ratio-originX;zoomWrap.scrollTop=(zoomWrap.scrollTop+originY)*ratio-originY;var value=floatingPopup.querySelector('.popup-zoom-value');if(value)value.textContent=Math.round(next*100)+'%';}",
+        "function setPopupZoom(zoomWrap,scale,event){var img=zoomWrap.querySelector('img');if(!img)return;var old=Number(zoomWrap.dataset.scale||1),min=Number(zoomWrap.dataset.minScale||1),next=clamp(scale,min,5),rect=zoomWrap.getBoundingClientRect(),originX=event?event.clientX-rect.left:rect.width/2,originY=event?event.clientY-rect.top:rect.height/2,ratio=next/old;zoomWrap.dataset.scale=String(next);img.style.maxWidth='none';img.style.maxHeight='none';img.style.width=(next*100)+'%';img.style.height='auto';zoomWrap.scrollLeft=(zoomWrap.scrollLeft+originX)*ratio-originX;zoomWrap.scrollTop=(zoomWrap.scrollTop+originY)*ratio-originY;var value=floatingPopup.querySelector('.popup-zoom-value');if(value)value.textContent=Math.round(next*100)+'%';}",
         "function handlePopupWheel(event){event.preventDefault();event.stopPropagation();var zoomWrap=event.currentTarget,scale=Number(zoomWrap.dataset.scale||1);setPopupZoom(zoomWrap,scale*(event.deltaY<0?1.15:.87),event);}",
         "function handlePopupButton(event){event.stopPropagation();var zoomWrap=floatingPopup.querySelector('.zoom-wrap');if(!zoomWrap)return;var action=event.currentTarget.dataset.popupZoom,scale=Number(zoomWrap.dataset.scale||1);if(action==='in')setPopupZoom(zoomWrap,scale*1.25);if(action==='out')setPopupZoom(zoomWrap,scale*.8);if(action==='reset'){setPopupZoom(zoomWrap,1);zoomWrap.scrollLeft=0;zoomWrap.scrollTop=0;}}",
-        "function openFloatingPopup(marker){var fullsrc=marker.dataset.fullsrc,name=marker.dataset.name,popup=floatingPopup;popup.innerHTML='<div class=\"zoom-wrap\" data-scale=\"1\"><img alt=\"\"></div><div class=\"popup-tools\"><button type=\"button\" data-popup-zoom=\"out\" title=\"Zooma ut\">-</button><span class=\"popup-zoom-value\">100%</span><button type=\"button\" data-popup-zoom=\"in\" title=\"Zooma in\">+</button><button type=\"button\" data-popup-zoom=\"reset\" title=\"Återställ zoom\">100%</button></div><b></b>';var img=popup.querySelector('.zoom-wrap img');img.src=fullsrc;img.alt=name;popup.querySelector('b').textContent=name;var zoomWrap=popup.querySelector('.zoom-wrap');zoomWrap.addEventListener('wheel',handlePopupWheel,{passive:false});popup.querySelectorAll('[data-popup-zoom]').forEach(function(button){button.addEventListener('click',handlePopupButton);});popup.style.display='block';}",
+        "function closeFloatingPopup(){floatingPopup.style.display='none';floatingPopup.innerHTML='';document.querySelectorAll('.marker.open').forEach(function(open){open.classList.remove('open');});}",
+        "function fitPopupImageToFrame(zoomWrap){var img=zoomWrap.querySelector('img');if(!img)return;img.style.maxWidth='none';img.style.maxHeight='none';img.style.height='auto';zoomWrap.dataset.scale='1';var rect=zoomWrap.getBoundingClientRect();if(!rect.width||!rect.height||!img.naturalWidth||!img.naturalHeight)return;var baseHeight=rect.width*(img.naturalHeight/img.naturalWidth),min=clamp(Math.max(1,rect.height/baseHeight),1,5);zoomWrap.dataset.minScale=String(min);setPopupZoom(zoomWrap,min);zoomWrap.scrollLeft=Math.max(0,(img.scrollWidth-zoomWrap.clientWidth)/2);zoomWrap.scrollTop=Math.max(0,(img.scrollHeight-zoomWrap.clientHeight)/2);}",
+        "function openFloatingPopup(marker){var fullsrc=marker.dataset.fullsrc,name=marker.dataset.name,title=marker.dataset.title||'',popup=floatingPopup;popup.innerHTML='<button type=\"button\" class=\"popup-close\" title=\"Stäng\" aria-label=\"Stäng\">×</button><div class=\"zoom-wrap\" data-scale=\"1\"><img alt=\"\"></div><div class=\"popup-tools\"><button type=\"button\" data-popup-zoom=\"out\" title=\"Zooma ut\">-</button><span class=\"popup-zoom-value\">100%</span><button type=\"button\" data-popup-zoom=\"in\" title=\"Zooma in\">+</button><button type=\"button\" data-popup-zoom=\"reset\" title=\"Återställ zoom\">100%</button></div><div class=\"popup-meta\"><b></b><input class=\"photo-title\" type=\"text\" placeholder=\"Titel\" aria-label=\"Titel\"></div>';var img=popup.querySelector('.zoom-wrap img'),input=popup.querySelector('.photo-title');img.src=fullsrc;img.alt=name;popup.querySelector('b').textContent=name;input.value=title;input.addEventListener('input',function(){marker.dataset.title=input.value;});var zoomWrap=popup.querySelector('.zoom-wrap');zoomWrap.addEventListener('wheel',handlePopupWheel,{passive:false});popup.querySelector('.popup-close').addEventListener('click',function(event){event.stopPropagation();closeFloatingPopup();});popup.style.display='block';img.addEventListener('load',function(){fitPopupImageToFrame(zoomWrap);},{once:true});if(img.complete)fitPopupImageToFrame(zoomWrap);}",
         "stage.addEventListener('wheel',function(event){if(event.target.closest('.floating-popup'))return;event.preventDefault();zoomAt(event.clientX,event.clientY,event.deltaY<0?1.12:.89);},{passive:false});",
         "stage.addEventListener('pointerdown',function(event){if(event.button!==0||event.target.closest('.marker')||event.target.closest('.floating-popup'))return;view.dragging=true;view.dragStartX=event.clientX;view.dragStartY=event.clientY;view.startPanX=view.panX;view.startPanY=view.panY;stage.classList.add('dragging');stage.setPointerCapture(event.pointerId);});",
         "window.addEventListener('pointermove',function(event){if(!view.dragging)return;view.panX=view.startPanX+event.clientX-view.dragStartX;view.panY=view.startPanY+event.clientY-view.dragStartY;apply();});",
