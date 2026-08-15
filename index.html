@@ -699,11 +699,11 @@
         <div class="field">
           <label for="imageInput">GPS-märkta bilder</label>
           <div class="file-picker">
-            <input class="native-file" type="file" id="imageInput" multiple accept="image/*">
+            <input class="native-file" type="file" id="imageInput" multiple accept="image/*,.zip,application/zip">
             <label class="file-button" for="imageInput">Välj fil</label>
             <span class="file-name" id="imageFileName">Inga filer valda</span>
           </div>
-          <div class="hint">Bilder utan GPS hoppas över.</div>
+          <div class="hint">Välj bilder direkt eller en ZIP-fil med bilder. Bilder utan GPS hoppas över.</div>
         </div>
         <div class="field">
           <label for="thumbSize">Miniatyrstorlek <span id="thumbSizeValue">56 px</span></label>
@@ -751,6 +751,7 @@
   <script src="https://unpkg.com/georaster"></script>
   <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script>
     const MAX_POPUP_IMAGE_SIDE = 1200;
 
@@ -833,7 +834,8 @@
     els.imageInput.addEventListener("change", async (event) => {
       const files = Array.from(event.target.files || []);
       updateFileLabels();
-      await loadPhotos(files);
+      const imageFiles = await expandImageFiles(files);
+      await loadPhotos(imageFiles);
       renderPhotos();
       updateUi();
     });
@@ -1157,6 +1159,68 @@
       }
 
       updateLog(progressLog, `Bildbearbetning klar: ${state.photos.length} placerade, ${state.skipped.length} ignorerade.`, state.photos.length ? "good" : "warn");
+    }
+
+    async function expandImageFiles(files) {
+      const expanded = [];
+      for (const file of files) {
+        if (isZipFile(file)) {
+          const zipFiles = await extractImagesFromZip(file);
+          expanded.push(...zipFiles);
+          continue;
+        }
+        if (isImageFile(file)) expanded.push(file);
+      }
+      return expanded;
+    }
+
+    async function extractImagesFromZip(file) {
+      if (!window.JSZip) {
+        addLog("Kunde inte packa upp ZIP: JSZip-biblioteket laddades inte.", "bad");
+        return [];
+      }
+
+      const progressLog = addLog(`Packar upp ${file.name}...`, "good");
+      const zip = await JSZip.loadAsync(file);
+      const entries = Object.values(zip.files)
+        .filter((entry) => !entry.dir && isImageName(entry.name));
+      const extracted = [];
+
+      for (const [index, entry] of entries.entries()) {
+        updateLog(progressLog, `Packar upp bild ${index + 1} av ${entries.length}: ${getFileName(entry.name)}`, "good");
+        const blob = await entry.async("blob");
+        extracted.push(new File([blob], getFileName(entry.name), { type: getImageMimeType(entry.name) }));
+      }
+
+      updateLog(progressLog, `ZIP klar: ${extracted.length} bild(er) hittade.`, extracted.length ? "good" : "warn");
+      return extracted;
+    }
+
+    function isZipFile(file) {
+      return /\.zip$/i.test(file.name) || file.type === "application/zip" || file.type === "application/x-zip-compressed";
+    }
+
+    function isImageFile(file) {
+      return file.type.startsWith("image/") || isImageName(file.name);
+    }
+
+    function isImageName(name) {
+      return /\.(jpe?g|png|webp|heic|heif|tiff?)$/i.test(name);
+    }
+
+    function getFileName(path) {
+      return String(path).split(/[\\/]/).pop() || "bild";
+    }
+
+    function getImageMimeType(name) {
+      const lower = name.toLowerCase();
+      if (/\.(jpg|jpeg)$/i.test(lower)) return "image/jpeg";
+      if (/\.png$/i.test(lower)) return "image/png";
+      if (/\.webp$/i.test(lower)) return "image/webp";
+      if (/\.heic$/i.test(lower)) return "image/heic";
+      if (/\.heif$/i.test(lower)) return "image/heif";
+      if (/\.tiff?$/i.test(lower)) return "image/tiff";
+      return "image/*";
     }
 
     function readGps(file) {
