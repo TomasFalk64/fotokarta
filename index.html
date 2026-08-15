@@ -1181,9 +1181,17 @@
             return;
           }
 
+          const latitude = dmsToDecimal(lat, latRef);
+          const longitude = dmsToDecimal(lon, lonRef);
+
+          if (!isValidCoordinate(latitude, longitude)) {
+            resolve(null);
+            return;
+          }
+
           resolve({
-            lat: dmsToDecimal(lat, latRef),
-            lon: dmsToDecimal(lon, lonRef),
+            lat: latitude,
+            lon: longitude,
             accuracy: Number.isFinite(accuracy) ? accuracy : "",
             startDate: parsedDateTime.date,
             startTime: parsedDateTime.time
@@ -1208,20 +1216,38 @@
       if (value && typeof value.numerator === "number" && typeof value.denominator === "number") {
         return value.denominator ? value.numerator / value.denominator : NaN;
       }
+      if (value && typeof value.num === "number" && typeof value.den === "number") {
+        return value.den ? value.num / value.den : NaN;
+      }
+      if (typeof value === "string") {
+        const normalized = value.trim().replace(",", ".");
+        const fraction = normalized.match(/^(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)$/);
+        if (fraction) {
+          const numerator = Number(fraction[1]);
+          const denominator = Number(fraction[2]);
+          return denominator ? numerator / denominator : NaN;
+        }
+        return Number(normalized);
+      }
       return NaN;
     }
 
     function dmsToDecimal(value, ref) {
-      const parts = Array.from(value).map((part) => {
-        if (typeof part === "number") return part;
-        if (part && typeof part.numerator === "number" && typeof part.denominator === "number") {
-          return part.numerator / part.denominator;
-        }
-        return Number(part) || 0;
-      });
-      let decimal = parts[0] + parts[1] / 60 + parts[2] / 3600;
-      if (ref === "S" || ref === "W") decimal *= -1;
+      const parts = Array.isArray(value) || typeof value !== "string" && value && typeof value[Symbol.iterator] === "function"
+        ? Array.from(value).map(rationalToNumber)
+        : [rationalToNumber(value)];
+      if (!parts.length || parts.some((part) => !Number.isFinite(part))) return NaN;
+      let decimal = parts.length === 1 ? parts[0] : parts[0] + (parts[1] || 0) / 60 + (parts[2] || 0) / 3600;
+      if (String(ref).toUpperCase() === "S" || String(ref).toUpperCase() === "W") decimal *= -1;
       return decimal;
+    }
+
+    function isValidCoordinate(lat, lon) {
+      return Number.isFinite(lat)
+        && Number.isFinite(lon)
+        && Math.abs(lat) <= 90
+        && Math.abs(lon) <= 180
+        && !(lat === 0 && lon === 0);
     }
 
     function compressImage(file, maxSide, quality) {
