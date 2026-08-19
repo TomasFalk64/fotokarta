@@ -324,6 +324,17 @@
       font-size: 14px;
     }
 
+    .lede span {
+      display: block;
+    }
+
+    .lede strong {
+      display: block;
+      margin-top: 8px;
+      color: #23313d;
+      font-weight: 700;
+    }
+
     .section {
       padding: 14px 0;
       border-top: 1px solid var(--line);
@@ -683,10 +694,15 @@
   <main class="app">
     <aside class="sidebar">
       <h1>Fotokartgenerator</h1>
-      <p class="lede">Skapa en fristående HTML-karta från en lokal GeoTIFF och GPS-märkta foton. All bearbetning sker i webbläsaren.</p>
+      <p class="lede">
+        <span>Ladda upp bilder och ev. även karta.</span>
+        <span>Skapa Excelfil för export till Artportalen.</span>
+        <span>Skapa en fristående HTML-karta.</span>
+        <strong>GPS-position blockeras tyvärr av Android och iOS på mobilen, men kan användas på dator.</strong>
+      </p>
 
       <section class="section">
-        <h2>Inläsning</h2>
+        
         <div class="field">
           <label for="geotiffInput">GeoTIFF-karta</label>
           <div class="file-picker">
