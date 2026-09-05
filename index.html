@@ -1782,19 +1782,17 @@
     function normalizeGeoJsonPolygon(coordinates) {
       return (coordinates || []).map((ring) => {
         return (ring || []).map((position) => {
-          const lon = Number(position && position[0]);
-          const lat = Number(position && position[1]);
-          return { lat, lon };
+          const x = Number(position && position[0]);
+          const y = Number(position && position[1]);
+          return { x, y, lat: y, lon: x };
         }).filter(isGeoJsonCoordinate);
       }).filter((ring) => ring.length >= 3);
     }
 
     function isGeoJsonCoordinate(point) {
       return point
-        && Number.isFinite(point.lat)
-        && Number.isFinite(point.lon)
-        && Math.abs(point.lat) <= 90
-        && Math.abs(point.lon) <= 180;
+        && Number.isFinite(point.x)
+        && Number.isFinite(point.y);
     }
 
     function compressImage(file, maxSide, quality) {
@@ -2294,13 +2292,17 @@
 
     function geoJsonPointToImagePoint(point, fallbackBounds = null, includeOutside = false) {
       if (!state.geotiff) return geoJsonPointToFallbackPoint(point, fallbackBounds);
-      if (!window.proj4) return null;
       const projection = state.geotiff.projection || 4326;
       let projected;
       try {
-        projected = Number(projection) === 4326
-          ? [point.lon, point.lat]
-          : proj4("EPSG:4326", `EPSG:${projection}`, [point.lon, point.lat]);
+        if (shouldUseRawGeoJsonCoordinates(point, projection)) {
+          projected = [point.x, point.y];
+        } else {
+          if (!window.proj4) return null;
+          projected = Number(projection) === 4326
+            ? [point.x, point.y]
+            : proj4("EPSG:4326", `EPSG:${projection}`, [point.x, point.y]);
+        }
       } catch (error) {
         return null;
       }
@@ -2319,6 +2321,31 @@
         lat: 1 - yRatio,
         lon: xRatio * aspect
       };
+    }
+
+    function shouldUseRawGeoJsonCoordinates(point, projection) {
+      if (Number(projection) === 4326) return true;
+      if (!isLonLatCoordinate(point)) return true;
+      return isRawCoordinateNearRaster(point);
+    }
+
+    function isLonLatCoordinate(point) {
+      return Math.abs(point.y) <= 90 && Math.abs(point.x) <= 180;
+    }
+
+    function isRawCoordinateNearRaster(point) {
+      const xmin = state.geotiff && state.geotiff.xmin;
+      const xmax = state.geotiff && state.geotiff.xmax;
+      const ymin = state.geotiff && state.geotiff.ymin;
+      const ymax = state.geotiff && state.geotiff.ymax;
+      if (![xmin, xmax, ymin, ymax].every(Number.isFinite)) return false;
+
+      const xPadding = Math.abs(xmax - xmin) * 2;
+      const yPadding = Math.abs(ymax - ymin) * 2;
+      return point.x >= xmin - xPadding
+        && point.x <= xmax + xPadding
+        && point.y >= ymin - yPadding
+        && point.y <= ymax + yPadding;
     }
 
     function isGeoJsonPolygonInsideDisplay(polygon, fallbackBounds) {
@@ -2388,7 +2415,7 @@
       const points = [];
       photos.forEach((photo) => {
         if (Number.isFinite(photo.lat) && Number.isFinite(photo.lon)) {
-          points.push({ lat: photo.lat, lon: photo.lon });
+          points.push({ x: photo.lon, y: photo.lat });
         }
       });
       polygons.forEach((polygon) => {
@@ -2401,29 +2428,36 @@
 
       if (!points.length) return null;
 
-      let minLat = Math.min(...points.map((point) => point.lat));
-      let maxLat = Math.max(...points.map((point) => point.lat));
-      let minLon = Math.min(...points.map((point) => point.lon));
-      let maxLon = Math.max(...points.map((point) => point.lon));
-      const centerLat = (minLat + maxLat) / 2;
-      const latSpan = Math.max(maxLat - minLat, 0.002);
-      const lonSpan = Math.max(maxLon - minLon, 0.002 / Math.max(Math.cos(centerLat * Math.PI / 180), 0.2));
-      const latPadding = latSpan * 0.12;
-      const lonPadding = lonSpan * 0.12;
-      minLat -= latPadding;
-      maxLat += latPadding;
-      minLon -= lonPadding;
-      maxLon += lonPadding;
+      let minY = Math.min(...points.map((point) => point.y));
+      let maxY = Math.max(...points.map((point) => point.y));
+      let minX = Math.min(...points.map((point) => point.x));
+      let maxX = Math.max(...points.map((point) => point.x));
+      const allLonLat = points.every(isLonLatCoordinate);
+      const centerY = (minY + maxY) / 2;
+      const ySpan = Math.max(maxY - minY, allLonLat ? 0.002 : 2);
+      const xSpan = Math.max(maxX - minX, allLonLat ? 0.002 / Math.max(Math.cos(centerY * Math.PI / 180), 0.2) : 2);
+      const yPadding = ySpan * 0.12;
+      const xPadding = xSpan * 0.12;
+      minY -= yPadding;
+      maxY += yPadding;
+      minX -= xPadding;
+      maxX += xPadding;
 
-      const paddedLatSpan = maxLat - minLat;
-      const paddedLonSpan = maxLon - minLon;
+      const paddedYSpan = maxY - minY;
+      const paddedXSpan = maxX - minX;
       const aspect = clamp(
-        (paddedLonSpan * Math.max(Math.cos(centerLat * Math.PI / 180), 0.2)) / paddedLatSpan,
+        (paddedXSpan * (allLonLat ? Math.max(Math.cos(centerY * Math.PI / 180), 0.2) : 1)) / paddedYSpan,
         0.75,
         1.8
       );
 
-      return { minLat, maxLat, minLon, maxLon, aspect };
+      return {
+        minLat: minY,
+        maxLat: maxY,
+        minLon: minX,
+        maxLon: maxX,
+        aspect
+      };
     }
 
     function getPhotoMapPoint(photo, photoBounds = null) {
