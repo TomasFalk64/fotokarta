@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GeoTIFF och fotokartgenerator</title>
+  <title>Fotokartgenerator</title>
   <style>
     :root {
       color-scheme: light;
@@ -107,6 +107,27 @@
       position: absolute;
       inset: 0;
       pointer-events: none;
+    }
+
+    .geojson-overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .geojson-overlay.visible {
+      display: block;
+    }
+
+    .geojson-polygon {
+      fill: rgba(11, 111, 106, .18);
+      stroke: #d33f2f;
+      stroke-width: 3px;
+      vector-effect: non-scaling-stroke;
     }
 
     .image-photo {
@@ -627,6 +648,256 @@
       box-shadow: 0 5px 20px rgba(20, 31, 43, .12);
     }
 
+    .document-map-button {
+      position: absolute;
+      z-index: 540;
+      top: 12px;
+      left: 12px;
+      display: none;
+      grid-template-columns: 26px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      max-width: min(340px, calc(100% - 24px));
+      min-height: 42px;
+      padding: 7px 10px;
+      border: 1px solid rgba(150, 163, 175, .65);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .96);
+      color: #1f2933;
+      box-shadow: 0 5px 20px rgba(20, 31, 43, .14);
+      text-align: left;
+    }
+
+    .document-map-button.visible {
+      display: grid;
+    }
+
+    .document-icon {
+      position: relative;
+      width: 22px;
+      height: 28px;
+      border: 2px solid #34424f;
+      border-radius: 3px;
+      background: #ffffff;
+    }
+
+    .document-icon::before {
+      content: "";
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      width: 8px;
+      height: 8px;
+      border-left: 2px solid #34424f;
+      border-bottom: 2px solid #34424f;
+      background: #e8edf1;
+    }
+
+    .document-icon::after {
+      content: "";
+      position: absolute;
+      left: 4px;
+      right: 4px;
+      top: 10px;
+      height: 2px;
+      background: #0b6f6a;
+      box-shadow: 0 5px 0 #0b6f6a, 0 10px 0 #0b6f6a;
+    }
+
+    .document-map-title {
+      min-width: 0;
+      overflow: hidden;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .document-modal-backdrop {
+      position: fixed;
+      z-index: 3000;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(20, 31, 43, .42);
+    }
+
+    .document-modal-backdrop.open {
+      display: flex;
+    }
+
+    .document-modal {
+      width: min(760px, 100%);
+      max-height: min(86vh, 820px);
+      display: grid;
+      grid-template-rows: auto auto minmax(260px, 1fr) auto;
+      gap: 12px;
+      border: 1px solid #c7d0d8;
+      border-radius: 8px;
+      padding: 16px;
+      background: #ffffff;
+      box-shadow: 0 18px 60px rgba(20, 31, 43, .32);
+    }
+
+    .document-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .document-modal-header h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .document-close {
+      width: 32px;
+      height: 32px;
+      min-height: 32px;
+      padding: 0;
+      border: 1px solid #b8c4ce;
+      border-radius: 50%;
+      background: #ffffff;
+      color: #263440;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .document-editor {
+      min-height: 280px;
+      overflow: auto;
+      border: 1px dashed #9aa8b4;
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfd;
+      color: #1f2933;
+      line-height: 1.5;
+      outline: none;
+    }
+
+    .document-editor:focus {
+      border-color: #0b6f6a;
+      box-shadow: 0 0 0 3px rgba(11, 111, 106, .14);
+    }
+
+    .document-editor.empty::before {
+      content: attr(data-placeholder);
+      color: #687582;
+      pointer-events: none;
+    }
+
+    .document-editor.drag-over {
+      border-color: #0b6f6a;
+      background: #eef8f6;
+    }
+
+    .document-editor h1,
+    .document-editor h2,
+    .document-editor h3 {
+      margin: 0 0 8px;
+      line-height: 1.25;
+    }
+
+    .document-editor p,
+    .document-editor div {
+      margin: 0 0 10px;
+    }
+
+    .document-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .document-preview {
+      position: fixed;
+      z-index: 2500;
+      left: 16px;
+      top: 66px;
+      width: min(620px, calc(100vw - 32px));
+      max-height: calc(100vh - 96px);
+      display: none;
+      grid-template-rows: auto minmax(0, 1fr);
+      border: 1px solid #c7d0d8;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 12px 42px rgba(20, 31, 43, .3);
+      overflow: hidden;
+    }
+
+    .document-preview.open {
+      display: grid;
+    }
+
+    .document-preview-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid #d8dee4;
+      padding: 12px 14px;
+      background: #f7f9fb;
+    }
+
+    .document-preview-header h2 {
+      margin: 0;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    .document-preview-content {
+      overflow: auto;
+      padding: 16px;
+      line-height: 1.55;
+    }
+
+    .document-preview-content h1,
+    .document-preview-content h2,
+    .document-preview-content h3 {
+      margin: 0 0 8px;
+      line-height: 1.25;
+    }
+
+    .document-preview-content p,
+    .document-preview-content div,
+    .document-preview-content ul,
+    .document-preview-content ol {
+      margin: 0 0 12px;
+    }
+
+    .document-preview-content img {
+      max-width: 100%;
+      height: auto;
+    }
+
+    .attachment-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .attachment-panel {
+      min-width: 0;
+    }
+
+    .attachment-panel h2 {
+      margin: 0 0 10px;
+    }
+
+    .attachment-panel button,
+    .attachment-panel .file-button {
+      width: 100%;
+      justify-content: center;
+    }
+
     .zoom-controls {
       position: absolute;
       z-index: 520;
@@ -695,9 +966,9 @@
     <aside class="sidebar">
       <h1>Fotokartgenerator</h1>
       <p class="lede">
-        <span>Ladda upp bilder och ev. även karta.</span>
-        <span>Skapa Excelfil för export till Artportalen.</span>
+        <span>Ladda upp bilder och karta.</span>
         <span>Skapa en fristående HTML-karta.</span>
+        <span>Skapa Excelfil för export till Artportalen.</span>
         <strong>GPS-position blockeras tyvärr av Android och iOS på mobilen, men kan användas på dator.</strong>
       </p>
 
@@ -734,6 +1005,21 @@
       </section>
 
       <section class="section">
+        <div class="attachment-grid">
+          <div class="attachment-panel">
+            <h2>Dokument</h2>
+            <button type="button" class="secondary" id="documentEditBtn">Bifoga dokumenttext</button>
+          </div>
+          <div class="attachment-panel">
+            <h2>Polygon</h2>
+            <input class="native-file" type="file" id="geojsonInput" accept=".geojson,.json,application/geo+json,application/json">
+            <label class="file-button" for="geojsonInput">Ladda GeoJSON</label>
+          </div>
+        </div>
+        <div class="hint">Klistra in text från Word eller importera .txt/.md. GeoJSON visas som polygonlager på kartan.</div>
+      </section>
+
+      <section class="section">
         <h2>Logg</h2>
         <div class="log" id="log"></div>
       </section>
@@ -749,9 +1035,21 @@
       <div class="image-stage" id="imageStage">
         <div class="image-surface" id="imageSurface">
           <img id="imageMap" alt="">
+          <svg class="geojson-overlay" id="geojsonOverlay" aria-hidden="true"></svg>
           <div class="image-overlay" id="imageOverlay"></div>
         </div>
         <div class="floating-popup" id="floatingPopup"></div>
+      </div>
+      <button type="button" class="document-map-button" id="documentMapButton" aria-label="Öppna dokumenttext">
+        <span class="document-icon" aria-hidden="true"></span>
+        <span class="document-map-title" id="documentMapTitle"></span>
+      </button>
+      <div class="document-preview" id="documentPreview" role="dialog" aria-modal="false" aria-labelledby="documentPreviewTitle">
+        <div class="document-preview-header">
+          <h2 id="documentPreviewTitle"></h2>
+          <button type="button" class="document-close" id="documentPreviewClose" title="Stäng" aria-label="Stäng">×</button>
+        </div>
+        <div class="document-preview-content" id="documentPreviewContent"></div>
       </div>
       <div class="zoom-controls" aria-label="Zoomkontroller">
         <button type="button" id="zoomOutBtn" title="Zooma ut">-</button>
@@ -762,6 +1060,26 @@
       <div class="map-badge" id="mapBadge">Välj en GeoTIFF och några GPS-märkta bilder för att börja.</div>
     </section>
   </main>
+
+  <div class="document-modal-backdrop" id="documentModal" role="dialog" aria-modal="true" aria-labelledby="documentModalTitle">
+    <div class="document-modal">
+      <div class="document-modal-header">
+        <h2 id="documentModalTitle">Dokumenttext</h2>
+        <button type="button" class="document-close" id="documentCancelTopBtn" title="Stäng" aria-label="Stäng">×</button>
+      </div>
+      <div class="field">
+        <label for="documentTitleInput">Titel</label>
+        <input type="text" id="documentTitleInput" placeholder="Dokumenttitel">
+      </div>
+      <div class="document-editor empty" id="documentEditor" contenteditable="true" data-placeholder="Klistra in text här eller klicka för att välja .txt/.md-fil"></div>
+      <input class="native-file" type="file" id="documentFileInput" accept=".txt,.md,text/plain,text/markdown">
+      <div class="document-actions">
+        <button type="button" class="secondary" id="documentDeleteBtn">Ta bort</button>
+        <button type="button" class="secondary" id="documentCancelBtn">Avbryt</button>
+        <button type="button" id="documentSaveBtn">Spara</button>
+      </div>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/proj4@2.11.0/dist/proj4.js"></script>
   <script src="https://unpkg.com/georaster"></script>
@@ -777,6 +1095,14 @@
       geotiffName: "",
       imageDataUrl: "",
       photoBoxAspect: 1.35,
+      document: {
+        title: "",
+        html: ""
+      },
+      geojson: {
+        name: "",
+        polygons: []
+      },
       photos: [],
       skipped: [],
       objectUrls: [],
@@ -795,6 +1121,7 @@
     const els = {
       geotiffInput: document.getElementById("geotiffInput"),
       imageInput: document.getElementById("imageInput"),
+      geojsonInput: document.getElementById("geojsonInput"),
       geotiffFileName: document.getElementById("geotiffFileName"),
       imageFileName: document.getElementById("imageFileName"),
       downloadBtn: document.getElementById("downloadBtn"),
@@ -809,8 +1136,24 @@
       imageStage: document.getElementById("imageStage"),
       imageSurface: document.getElementById("imageSurface"),
       imageMap: document.getElementById("imageMap"),
+      geojsonOverlay: document.getElementById("geojsonOverlay"),
       imageOverlay: document.getElementById("imageOverlay"),
       floatingPopup: document.getElementById("floatingPopup"),
+      documentEditBtn: document.getElementById("documentEditBtn"),
+      documentModal: document.getElementById("documentModal"),
+      documentTitleInput: document.getElementById("documentTitleInput"),
+      documentEditor: document.getElementById("documentEditor"),
+      documentFileInput: document.getElementById("documentFileInput"),
+      documentSaveBtn: document.getElementById("documentSaveBtn"),
+      documentCancelBtn: document.getElementById("documentCancelBtn"),
+      documentCancelTopBtn: document.getElementById("documentCancelTopBtn"),
+      documentDeleteBtn: document.getElementById("documentDeleteBtn"),
+      documentMapButton: document.getElementById("documentMapButton"),
+      documentMapTitle: document.getElementById("documentMapTitle"),
+      documentPreview: document.getElementById("documentPreview"),
+      documentPreviewTitle: document.getElementById("documentPreviewTitle"),
+      documentPreviewContent: document.getElementById("documentPreviewContent"),
+      documentPreviewClose: document.getElementById("documentPreviewClose"),
       zoomInBtn: document.getElementById("zoomInBtn"),
       zoomOutBtn: document.getElementById("zoomOutBtn"),
       zoomResetBtn: document.getElementById("zoomResetBtn"),
@@ -844,6 +1187,7 @@
       updateFileLabels();
       await loadGeoTiff(file);
       renderPhotos();
+      renderGeoJson();
       updateUi();
     });
 
@@ -853,12 +1197,57 @@
       const imageFiles = await expandImageFiles(files);
       await loadPhotos(imageFiles);
       renderPhotos();
+      renderGeoJson();
+      updateUi();
+    });
+
+    els.geojsonInput.addEventListener("change", async (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      await loadGeoJson(file);
+      renderPhotos();
+      renderGeoJson();
       updateUi();
     });
 
     els.downloadBtn.addEventListener("click", downloadStandaloneHtml);
     els.downloadExcelBtn.addEventListener("click", downloadExcel);
     els.resetBtn.addEventListener("click", resetAll);
+    els.documentEditBtn.addEventListener("click", openDocumentEditor);
+    els.documentSaveBtn.addEventListener("click", saveDocumentEditor);
+    els.documentCancelBtn.addEventListener("click", closeDocumentEditor);
+    els.documentCancelTopBtn.addEventListener("click", closeDocumentEditor);
+    els.documentDeleteBtn.addEventListener("click", deleteDocumentText);
+    els.documentMapButton.addEventListener("click", openDocumentPreview);
+    els.documentPreviewClose.addEventListener("click", closeDocumentPreview);
+    els.documentEditor.addEventListener("input", updateDocumentEditorPlaceholder);
+    els.documentEditor.addEventListener("click", () => {
+      if (!getDocumentEditorHtml()) els.documentFileInput.click();
+    });
+    els.documentEditor.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      els.documentEditor.classList.add("drag-over");
+    });
+    els.documentEditor.addEventListener("dragleave", () => {
+      els.documentEditor.classList.remove("drag-over");
+    });
+    els.documentEditor.addEventListener("drop", async (event) => {
+      event.preventDefault();
+      els.documentEditor.classList.remove("drag-over");
+      const file = event.dataTransfer.files && event.dataTransfer.files[0];
+      if (file) await importDocumentFile(file);
+    });
+    els.documentEditor.addEventListener("paste", () => {
+      setTimeout(updateDocumentEditorPlaceholder, 0);
+    });
+    els.documentFileInput.addEventListener("change", async (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (file) await importDocumentFile(file);
+      els.documentFileInput.value = "";
+    });
+    els.documentModal.addEventListener("click", (event) => {
+      if (event.target === els.documentModal) closeDocumentEditor();
+    });
     window.addEventListener("error", (event) => {
       addLog(`Fel: ${event.message}`, "bad");
       els.mapBadge.textContent = "Ett JavaScript-fel stoppade inläsningen. Se händelseloggen.";
@@ -871,6 +1260,7 @@
 
     verifyLibraries();
     updateMarkerSize();
+    renderDocumentUi();
 
     function addLog(message, type = "good") {
       const item = document.createElement("div");
@@ -960,6 +1350,7 @@
       addLog(`Renderar om ${fileName}...`, "good");
       await loadGeoTiff(new File([state.geotiffArrayBuffer.slice(0)], fileName, { type: "image/tiff" }));
       renderPhotos();
+      renderGeoJson();
       updateUi();
     }
 
@@ -970,6 +1361,7 @@
       els.imageSurface.classList.remove("no-map");
       els.imageSurface.style.removeProperty("--photo-box-aspect");
       els.imageOverlay.innerHTML = "";
+      els.geojsonOverlay.innerHTML = "";
       resetView();
     }
 
@@ -1330,6 +1722,81 @@
         && !(lat === 0 && lon === 0);
     }
 
+    async function loadGeoJson(file) {
+      try {
+        const text = await file.text();
+        const geojson = JSON.parse(text);
+        const polygons = extractGeoJsonPolygons(geojson);
+        if (!polygons.length) {
+          throw new Error("inga polygoner hittades");
+        }
+
+        state.geojson = {
+          name: file.name,
+          polygons
+        };
+        const visibleCount = computeGeoJsonPaths().length;
+        const skippedCount = Math.max(0, polygons.length - visibleCount);
+        const skippedText = skippedCount ? ` ${skippedCount} utanför kartan hoppades över.` : "";
+        addLog(`GeoJSON klar: ${file.name}, ${visibleCount} polygon${visibleCount === 1 ? "" : "er"} visas.${skippedText}`, visibleCount ? "good" : "warn");
+      } catch (error) {
+        console.error(error);
+        state.geojson = { name: "", polygons: [] };
+        els.geojsonInput.value = "";
+        addLog(`Kunde inte läsa GeoJSON: ${error.message || error}`, "bad");
+      }
+    }
+
+    function extractGeoJsonPolygons(geojson) {
+      const features = geojson && geojson.type === "FeatureCollection"
+        ? geojson.features || []
+        : geojson && geojson.type === "Feature"
+          ? [geojson]
+          : [{ type: "Feature", geometry: geojson, properties: {} }];
+
+      const polygons = [];
+      features.forEach((feature) => {
+        collectGeoJsonGeometryPolygons(feature && feature.geometry, feature && feature.properties || {}, polygons);
+      });
+
+      return polygons.filter((polygon) => polygon.rings.some((ring) => ring.length >= 3));
+    }
+
+    function collectGeoJsonGeometryPolygons(geometry, properties, polygons) {
+      if (!geometry) return;
+      if (geometry.type === "Polygon") {
+        polygons.push({ rings: normalizeGeoJsonPolygon(geometry.coordinates), properties });
+      }
+      if (geometry.type === "MultiPolygon") {
+        (geometry.coordinates || []).forEach((coordinates) => {
+          polygons.push({ rings: normalizeGeoJsonPolygon(coordinates), properties });
+        });
+      }
+      if (geometry.type === "GeometryCollection") {
+        (geometry.geometries || []).forEach((childGeometry) => {
+          collectGeoJsonGeometryPolygons(childGeometry, properties, polygons);
+        });
+      }
+    }
+
+    function normalizeGeoJsonPolygon(coordinates) {
+      return (coordinates || []).map((ring) => {
+        return (ring || []).map((position) => {
+          const lon = Number(position && position[0]);
+          const lat = Number(position && position[1]);
+          return { lat, lon };
+        }).filter(isGeoJsonCoordinate);
+      }).filter((ring) => ring.length >= 3);
+    }
+
+    function isGeoJsonCoordinate(point) {
+      return point
+        && Number.isFinite(point.lat)
+        && Number.isFinite(point.lon)
+        && Math.abs(point.lat) <= 90
+        && Math.abs(point.lon) <= 180;
+    }
+
     function compressImage(file, maxSide, quality) {
       return new Promise((resolve, reject) => {
         const image = new Image();
@@ -1388,6 +1855,22 @@
       });
     }
 
+    function renderGeoJson() {
+      els.geojsonOverlay.innerHTML = "";
+      const paths = computeGeoJsonPaths();
+      const aspect = getDisplayAspect();
+      els.geojsonOverlay.setAttribute("viewBox", `0 0 ${aspect} 1`);
+      els.geojsonOverlay.setAttribute("preserveAspectRatio", "none");
+      els.geojsonOverlay.classList.toggle("visible", paths.length > 0);
+
+      paths.forEach((pathData) => {
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("class", "geojson-polygon");
+        path.setAttribute("d", pathData);
+        els.geojsonOverlay.appendChild(path);
+      });
+    }
+
     function updateDisplaySurface() {
       if (state.imageDataUrl) {
         els.imageSurface.classList.remove("no-map");
@@ -1396,12 +1879,14 @@
       }
 
       els.imageMap.removeAttribute("src");
-      if (!state.photos.length) {
+      if (!state.photos.length && !state.geojson.polygons.length) {
         els.imageSurface.classList.remove("no-map");
         els.imageSurface.style.removeProperty("--photo-box-aspect");
         return;
       }
 
+      const fallbackBounds = computeFallbackBounds(state.photos, state.geojson.polygons);
+      if (fallbackBounds) state.photoBoxAspect = fallbackBounds.aspect;
       els.imageSurface.classList.add("no-map");
       els.imageSurface.style.setProperty("--photo-box-aspect", state.photoBoxAspect);
     }
@@ -1523,16 +2008,255 @@
       }
     }
 
+    function hasDocumentText() {
+      return Boolean(state.document && getMeaningfulText(state.document.html));
+    }
+
+    function openDocumentEditor() {
+      els.documentTitleInput.value = state.document.title || "";
+      els.documentEditor.innerHTML = state.document.html || "";
+      updateDocumentEditorPlaceholder();
+      els.documentModal.classList.add("open");
+      setTimeout(() => {
+        if (state.document.title) {
+          els.documentEditor.focus();
+        } else {
+          els.documentTitleInput.focus();
+        }
+      }, 0);
+    }
+
+    function closeDocumentEditor() {
+      els.documentModal.classList.remove("open");
+      els.documentEditor.classList.remove("drag-over");
+    }
+
+    function saveDocumentEditor() {
+      const html = sanitizeDocumentHtml(getDocumentEditorHtml());
+      if (!getMeaningfulText(html)) {
+        state.document = { title: "", html: "" };
+        closeDocumentEditor();
+        renderDocumentUi();
+        updateUi();
+        return;
+      }
+      const fallbackTitle = getMeaningfulText(html).split(/\s+/).slice(0, 5).join(" ");
+      state.document = {
+        title: els.documentTitleInput.value.trim() || fallbackTitle || "Dokumenttext",
+        html
+      };
+      closeDocumentEditor();
+      renderDocumentUi();
+      updateUi();
+      addLog("Dokumenttext sparad.", "good");
+    }
+
+    function deleteDocumentText() {
+      state.document = { title: "", html: "" };
+      els.documentTitleInput.value = "";
+      els.documentEditor.innerHTML = "";
+      closeDocumentEditor();
+      closeDocumentPreview();
+      renderDocumentUi();
+      updateUi();
+      addLog("Dokumenttext borttagen.", "good");
+    }
+
+    async function importDocumentFile(file) {
+      if (!/\.(txt|md)$/i.test(file.name) && !/^text\//i.test(file.type || "")) {
+        addLog("Dokumentimport stöder .txt och .md. Klistra in text från Word direkt i rutan.", "warn");
+        return;
+      }
+
+      const text = await file.text();
+      const html = /\.md$/i.test(file.name) ? markdownToHtml(text) : plainTextToHtml(text);
+      els.documentEditor.innerHTML = html;
+      if (!els.documentTitleInput.value.trim()) {
+        els.documentTitleInput.value = getBaseFileName(file.name);
+      }
+      updateDocumentEditorPlaceholder();
+      addLog(`Importerade dokumenttext från ${file.name}.`, "good");
+    }
+
+    function getDocumentEditorHtml() {
+      return els.documentEditor.innerHTML.trim();
+    }
+
+    function updateDocumentEditorPlaceholder() {
+      els.documentEditor.classList.toggle("empty", !getMeaningfulText(els.documentEditor.innerHTML));
+    }
+
+    function renderDocumentUi() {
+      if (!hasDocumentText()) {
+        els.documentMapButton.classList.remove("visible");
+        els.documentMapTitle.textContent = "";
+        els.documentEditBtn.textContent = "Bifoga dokumenttext";
+        els.documentDeleteBtn.disabled = true;
+        closeDocumentPreview();
+        return;
+      }
+
+      els.documentMapTitle.textContent = state.document.title || "Dokumenttext";
+      els.documentMapButton.classList.add("visible");
+      els.documentEditBtn.textContent = "Ändra dokumenttext";
+      els.documentDeleteBtn.disabled = false;
+      if (els.documentPreview.classList.contains("open")) openDocumentPreview();
+    }
+
+    function openDocumentPreview() {
+      if (!hasDocumentText()) return;
+      els.documentPreviewTitle.textContent = state.document.title || "Dokumenttext";
+      els.documentPreviewContent.innerHTML = sanitizeDocumentHtml(state.document.html);
+      els.documentPreview.classList.add("open");
+    }
+
+    function closeDocumentPreview() {
+      els.documentPreview.classList.remove("open");
+      els.documentPreviewTitle.textContent = "";
+      els.documentPreviewContent.innerHTML = "";
+    }
+
+    function plainTextToHtml(text) {
+      const paragraphs = String(text || "")
+        .split(/\n{2,}/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+      return paragraphs.map((part) => `<p>${escapeHtml(part).replace(/\n/g, "<br>")}</p>`).join("");
+    }
+
+    function markdownToHtml(markdown) {
+      const lines = String(markdown || "").replace(/\r\n?/g, "\n").split("\n");
+      const html = [];
+      let paragraph = [];
+      let listType = "";
+
+      const flushParagraph = () => {
+        if (!paragraph.length) return;
+        html.push(`<p>${formatInlineMarkdown(escapeHtml(paragraph.join(" ")))}</p>`);
+        paragraph = [];
+      };
+      const closeList = () => {
+        if (!listType) return;
+        html.push(`</${listType}>`);
+        listType = "";
+      };
+
+      lines.forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          flushParagraph();
+          closeList();
+          return;
+        }
+        const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
+        if (heading) {
+          flushParagraph();
+          closeList();
+          html.push(`<h${heading[1].length}>${formatInlineMarkdown(escapeHtml(heading[2]))}</h${heading[1].length}>`);
+          return;
+        }
+        const unordered = trimmed.match(/^[-*]\s+(.+)$/);
+        const ordered = trimmed.match(/^\d+[.)]\s+(.+)$/);
+        if (unordered || ordered) {
+          flushParagraph();
+          const nextType = unordered ? "ul" : "ol";
+          if (listType && listType !== nextType) closeList();
+          if (!listType) {
+            listType = nextType;
+            html.push(`<${listType}>`);
+          }
+          html.push(`<li>${formatInlineMarkdown(escapeHtml((unordered || ordered)[1]))}</li>`);
+          return;
+        }
+        paragraph.push(trimmed);
+      });
+
+      flushParagraph();
+      closeList();
+      return html.join("");
+    }
+
+    function formatInlineMarkdown(text) {
+      return text
+        .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+        .replace(/\*(.+?)\*/g, "<em>$1</em>");
+    }
+
+    function sanitizeDocumentHtml(html) {
+      const template = document.createElement("template");
+      template.innerHTML = String(html || "");
+      const allowed = new Set(["H1", "H2", "H3", "P", "DIV", "BR", "UL", "OL", "LI", "STRONG", "B", "EM", "I", "U", "A", "BLOCKQUOTE"]);
+
+      const cleanNode = (node) => {
+        [...node.childNodes].forEach((child) => {
+          if (child.nodeType === Node.COMMENT_NODE) {
+            child.remove();
+            return;
+          }
+          if (child.nodeType !== Node.ELEMENT_NODE) return;
+
+          cleanNode(child);
+          if (!allowed.has(child.tagName)) {
+            child.replaceWith(...child.childNodes);
+            return;
+          }
+
+          if (child.tagName === "A") {
+            const href = child.getAttribute("href") || "";
+            [...child.attributes].forEach((attr) => child.removeAttribute(attr.name));
+            if (/^https?:\/\//i.test(href)) {
+              child.setAttribute("href", href);
+              child.setAttribute("target", "_blank");
+              child.setAttribute("rel", "noopener");
+            }
+          } else {
+            [...child.attributes].forEach((attr) => child.removeAttribute(attr.name));
+          }
+        });
+      };
+
+      cleanNode(template.content);
+      return template.innerHTML.trim();
+    }
+
+    function getMeaningfulText(html) {
+      const template = document.createElement("template");
+      template.innerHTML = String(html || "");
+      return (template.content.textContent || "").replace(/\s+/g, " ").trim();
+    }
+
     function updateMarkerSize() {
       const size = Number(els.thumbSize.value) || 56;
       els.imageOverlay.style.setProperty("--marker-size", `${size}px`);
       els.thumbSizeValue.textContent = `${size} px`;
     }
 
+    function computeGeoJsonPaths() {
+      if (!state.geojson.polygons.length) return [];
+      const fallbackBounds = state.geotiff ? null : computeFallbackBounds(state.photos, state.geojson.polygons);
+
+      return state.geojson.polygons.map((polygon) => {
+        if (state.geotiff && !isGeoJsonPolygonInsideDisplay(polygon, fallbackBounds)) return "";
+
+        const rings = polygon.rings.map((ring) => {
+          const points = ring
+            .map((point) => geoJsonPointToImagePoint(point, fallbackBounds, true))
+            .filter(Boolean);
+          if (points.length < 3) return "";
+          return points.map((point, index) => {
+            const command = index === 0 ? "M" : "L";
+            return `${command}${roundPathNumber(point.lon)} ${roundPathNumber(1 - point.lat)}`;
+          }).join(" ") + " Z";
+        }).filter(Boolean);
+
+        return rings.join(" ");
+      }).filter(Boolean);
+    }
+
     function computeDisplayPositions(photos) {
       const groups = new Map();
       const rounded = 4;
-      const photoBounds = state.geotiff ? null : computePhotoBounds(photos);
+      const photoBounds = state.geotiff ? null : computeFallbackBounds(photos, state.geojson.polygons);
       if (photoBounds) state.photoBoxAspect = photoBounds.aspect;
 
       photos.forEach((photo) => {
@@ -1568,6 +2292,69 @@
       return result;
     }
 
+    function geoJsonPointToImagePoint(point, fallbackBounds = null, includeOutside = false) {
+      if (!state.geotiff) return geoJsonPointToFallbackPoint(point, fallbackBounds);
+      if (!window.proj4) return null;
+      const projection = state.geotiff.projection || 4326;
+      let projected;
+      try {
+        projected = Number(projection) === 4326
+          ? [point.lon, point.lat]
+          : proj4("EPSG:4326", `EPSG:${projection}`, [point.lon, point.lat]);
+      } catch (error) {
+        return null;
+      }
+
+      const xmin = state.geotiff.xmin;
+      const xmax = state.geotiff.xmax;
+      const ymin = state.geotiff.ymin;
+      const ymax = state.geotiff.ymax;
+      if (![xmin, xmax, ymin, ymax].every(Number.isFinite)) return null;
+
+      const xRatio = (projected[0] - xmin) / (xmax - xmin);
+      const yRatio = (ymax - projected[1]) / (ymax - ymin);
+      if (!includeOutside && (xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1)) return null;
+      const aspect = state.geotiff.width / state.geotiff.height;
+      return {
+        lat: 1 - yRatio,
+        lon: xRatio * aspect
+      };
+    }
+
+    function isGeoJsonPolygonInsideDisplay(polygon, fallbackBounds) {
+      const points = polygon.rings
+        .flat()
+        .map((point) => geoJsonPointToImagePoint(point, fallbackBounds, true))
+        .filter(Boolean);
+      if (!points.length) return false;
+
+      const aspect = getDisplayAspect();
+      const minLat = Math.min(...points.map((point) => point.lat));
+      const maxLat = Math.max(...points.map((point) => point.lat));
+      const minLon = Math.min(...points.map((point) => point.lon));
+      const maxLon = Math.max(...points.map((point) => point.lon));
+
+      return maxLat >= 0 && minLat <= 1 && maxLon >= 0 && minLon <= aspect;
+    }
+
+    function geoJsonPointToFallbackPoint(point, bounds) {
+      if (!bounds) return null;
+      const latSpan = bounds.maxLat - bounds.minLat;
+      const lonSpan = bounds.maxLon - bounds.minLon;
+      if (!latSpan || !lonSpan) return null;
+      const xRatio = (point.lon - bounds.minLon) / lonSpan;
+      const yRatio = (bounds.maxLat - point.lat) / latSpan;
+
+      return {
+        lat: 1 - yRatio,
+        lon: xRatio * bounds.aspect
+      };
+    }
+
+    function roundPathNumber(value) {
+      return Number.isFinite(value) ? Number(value.toFixed(6)) : 0;
+    }
+
     function computePhotoBounds(photos) {
       const positioned = photos.filter((photo) => Number.isFinite(photo.lat) && Number.isFinite(photo.lon));
       if (!positioned.length) return null;
@@ -1576,6 +2363,48 @@
       let maxLat = Math.max(...positioned.map((photo) => photo.lat));
       let minLon = Math.min(...positioned.map((photo) => photo.lon));
       let maxLon = Math.max(...positioned.map((photo) => photo.lon));
+      const centerLat = (minLat + maxLat) / 2;
+      const latSpan = Math.max(maxLat - minLat, 0.002);
+      const lonSpan = Math.max(maxLon - minLon, 0.002 / Math.max(Math.cos(centerLat * Math.PI / 180), 0.2));
+      const latPadding = latSpan * 0.12;
+      const lonPadding = lonSpan * 0.12;
+      minLat -= latPadding;
+      maxLat += latPadding;
+      minLon -= lonPadding;
+      maxLon += lonPadding;
+
+      const paddedLatSpan = maxLat - minLat;
+      const paddedLonSpan = maxLon - minLon;
+      const aspect = clamp(
+        (paddedLonSpan * Math.max(Math.cos(centerLat * Math.PI / 180), 0.2)) / paddedLatSpan,
+        0.75,
+        1.8
+      );
+
+      return { minLat, maxLat, minLon, maxLon, aspect };
+    }
+
+    function computeFallbackBounds(photos, polygons) {
+      const points = [];
+      photos.forEach((photo) => {
+        if (Number.isFinite(photo.lat) && Number.isFinite(photo.lon)) {
+          points.push({ lat: photo.lat, lon: photo.lon });
+        }
+      });
+      polygons.forEach((polygon) => {
+        polygon.rings.forEach((ring) => {
+          ring.forEach((point) => {
+            if (isGeoJsonCoordinate(point)) points.push(point);
+          });
+        });
+      });
+
+      if (!points.length) return null;
+
+      let minLat = Math.min(...points.map((point) => point.lat));
+      let maxLat = Math.max(...points.map((point) => point.lat));
+      let minLon = Math.min(...points.map((point) => point.lon));
+      let maxLon = Math.max(...points.map((point) => point.lon));
       const centerLat = (minLat + maxLat) / 2;
       const latSpan = Math.max(maxLat - minLat, 0.002);
       const lonSpan = Math.max(maxLon - minLon, 0.002 / Math.max(Math.cos(centerLat * Math.PI / 180), 0.2));
@@ -1647,7 +2476,7 @@
     }
 
     function updateUi() {
-      els.downloadBtn.disabled = !state.imageDataUrl && !state.photos.length;
+      els.downloadBtn.disabled = !state.imageDataUrl && !state.photos.length && !hasDocumentText() && !state.geojson.polygons.length;
       els.downloadExcelBtn.disabled = !state.photos.length;
       if (!state.photos.length && els.floatingPopup) {
         els.floatingPopup.style.display = "none";
@@ -1655,7 +2484,10 @@
 
       const mapText = state.imageDataUrl ? `GeoTIFF: ${state.geotiffName}` : "Ingen karta vald, visar foton efter GPS-position.";
       const photoText = state.photos.length ? `${state.photos.length} foton placerade.` : "Inga foton placerade ännu.";
-      els.mapBadge.textContent = `${mapText} ${photoText}`;
+      const documentText = hasDocumentText() ? " Dokumenttext bifogad." : "";
+      const polygonText = state.geojson.polygons.length ? ` Polygon: ${state.geojson.name}.` : "";
+      els.mapBadge.textContent = `${mapText} ${photoText}${documentText}${polygonText}`;
+      renderDocumentUi();
 
       if (state.skipped.length) {
         const latest = state.skipped.slice(-4).map((item) => `${item.name}: ${item.reason}`).join(" | ");
@@ -1669,6 +2501,8 @@
       state.geotiffName = "";
       state.imageDataUrl = "";
       state.photoBoxAspect = 1.35;
+      state.document = { title: "", html: "" };
+      state.geojson = { name: "", polygons: [] };
       state.photos = [];
       state.skipped = [];
       cleanupPhotoUrls();
@@ -1676,12 +2510,20 @@
       els.imageSurface.classList.remove("no-map");
       els.imageSurface.style.removeProperty("--photo-box-aspect");
       els.imageOverlay.innerHTML = "";
+      els.geojsonOverlay.innerHTML = "";
+      els.geojsonOverlay.classList.remove("visible");
       if (els.floatingPopup) {
         els.floatingPopup.style.display = "none";
         els.floatingPopup.innerHTML = "";
       }
       els.geotiffInput.value = "";
       els.imageInput.value = "";
+      els.geojsonInput.value = "";
+      els.documentFileInput.value = "";
+      els.documentTitleInput.value = "";
+      els.documentEditor.innerHTML = "";
+      updateDocumentEditorPlaceholder();
+      renderDocumentUi();
       updateFileLabels();
       els.log.innerHTML = "";
       updateUi();
@@ -1690,12 +2532,21 @@
 
     async function downloadStandaloneHtml() {
       const imagePhotos = computeDisplayPositions(state.photos);
+      const geojsonPaths = computeGeoJsonPaths();
+      const downloadName = buildDownloadFileName(state.geotiffName);
       const payload = {
         exportedAt: new Date().toISOString(),
+        pageTitle: downloadName,
         geotiffName: state.geotiffName,
         markerSize: Number(els.thumbSize.value) || 56,
         imageDataUrl: state.imageDataUrl,
         imageAspect: getDisplayAspect(),
+        geojsonName: state.geojson.name,
+        geojsonPaths,
+        document: hasDocumentText() ? {
+          title: state.document.title || "Dokumenttext",
+          html: sanitizeDocumentHtml(state.document.html)
+        } : null,
         imagePhotos,
         photos: state.photos
       };
@@ -1705,7 +2556,6 @@
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      const downloadName = buildDownloadFileName(state.geotiffName);
       link.download = downloadName;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -1817,7 +2667,7 @@
     }
 
     function buildStandaloneImageHtml(payload) {
-      const doc = document.implementation.createHTMLDocument("Interaktiv fotokarta");
+      const doc = document.implementation.createHTMLDocument(payload.pageTitle || "Fotokarta");
       doc.documentElement.lang = "sv";
 
       const metaCharset = doc.createElement("meta");
@@ -1839,6 +2689,23 @@
         ".surface.no-map>img{display:none}",
         ".surface>img{display:block;max-width:calc(100vw - 84px);max-height:calc(100vh - 84px);width:auto;height:auto;object-fit:contain}",
         ".overlay{position:absolute;inset:0;pointer-events:none}",
+        ".geojson{position:absolute;inset:0;width:100%;height:100%;display:none;pointer-events:none;z-index:0}",
+        ".geojson.visible{display:block}",
+        ".geojson-polygon{fill:rgba(11,111,106,.18);stroke:#d33f2f;stroke-width:3px;vector-effect:non-scaling-stroke}",
+        ".doc-button{position:fixed;z-index:22;top:12px;left:12px;display:none;grid-template-columns:26px minmax(0,1fr);align-items:center;gap:8px;max-width:min(340px,calc(100% - 24px));min-height:42px;padding:7px 10px;border:1px solid rgba(150,163,175,.65);border-radius:8px;background:rgba(255,255,255,.96);color:#1f2933;box-shadow:0 5px 20px rgba(20,31,43,.14);text-align:left;font:inherit;font-weight:700;cursor:pointer}",
+        ".doc-button.visible{display:grid}",
+        ".doc-icon{position:relative;width:22px;height:28px;border:2px solid #34424f;border-radius:3px;background:#fff;flex:0 0 auto}",
+        ".doc-icon:before{content:\"\";position:absolute;top:-2px;right:-2px;width:8px;height:8px;border-left:2px solid #34424f;border-bottom:2px solid #34424f;background:#e8edf1}",
+        ".doc-icon:after{content:\"\";position:absolute;left:4px;right:4px;top:10px;height:2px;background:#0b6f6a;box-shadow:0 5px 0 #0b6f6a,0 10px 0 #0b6f6a}",
+        ".doc-title{min-width:0;overflow:hidden;font-size:13px;line-height:1.2;text-overflow:ellipsis;white-space:nowrap}",
+        ".doc-preview{position:fixed;z-index:2500;left:16px;top:66px;width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 96px);display:none;grid-template-rows:auto minmax(0,1fr);border:1px solid #c7d0d8;border-radius:8px;background:#fff;box-shadow:0 12px 42px rgba(20,31,43,.3);overflow:hidden}",
+        ".doc-preview.open{display:grid}",
+        ".doc-preview-header{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #d8dee4;padding:12px 14px;background:#f7f9fb}",
+        ".doc-preview-header h2{margin:0;min-width:0;overflow-wrap:anywhere;font-size:18px;line-height:1.25}",
+        ".doc-close{width:32px;height:32px;min-height:32px;padding:0;border:1px solid #b8c4ce;border-radius:50%;background:#fff;color:#263440;font-size:22px;line-height:1;cursor:pointer}",
+        ".doc-content{overflow:auto;padding:16px;line-height:1.55}",
+        ".doc-content h1,.doc-content h2,.doc-content h3{margin:0 0 8px;line-height:1.25}",
+        ".doc-content p,.doc-content ul,.doc-content ol{margin:0 0 12px}",
         ".floating-popup{position:fixed;z-index:1002;right:16px;top:16px;width:min(520px,75vw);max-height:calc(80vh - 32px);border:1px solid #c7d0d8;border-radius:8px;padding:8px 16px 14px 8px;background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.8),0 6px 24px rgba(20,31,43,.24);display:none;pointer-events:auto;overflow:hidden}",
         ".floating-popup .popup-close{position:absolute;z-index:2;top:8px;right:8px;width:28px;height:28px;min-width:28px;min-height:28px;padding:0;border:1px solid rgba(31,41,51,.28);border-radius:50%;background:rgba(255,255,255,.92);color:#1f2933;font-size:20px;line-height:1;cursor:pointer;box-shadow:0 2px 8px rgba(20,31,43,.2)}",
         ".floating-popup .popup-close:hover{background:#fff;border-color:rgba(31,41,51,.5)}",
@@ -1880,9 +2747,20 @@
       const image = doc.createElement("img");
       if (payload.imageDataUrl) image.src = payload.imageDataUrl;
       image.alt = "";
+      const geojsonOverlay = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+      geojsonOverlay.setAttribute("class", payload.geojsonPaths && payload.geojsonPaths.length ? "geojson visible" : "geojson");
+      geojsonOverlay.setAttribute("viewBox", `0 0 ${payload.imageAspect || 1} 1`);
+      geojsonOverlay.setAttribute("preserveAspectRatio", "none");
+      (payload.geojsonPaths || []).forEach((pathData) => {
+        const path = doc.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("class", "geojson-polygon");
+        path.setAttribute("d", pathData);
+        geojsonOverlay.appendChild(path);
+      });
       const overlay = doc.createElement("div");
       overlay.className = "overlay";
       surface.appendChild(image);
+      surface.appendChild(geojsonOverlay);
       surface.appendChild(overlay);
       stage.appendChild(surface);
       doc.body.appendChild(stage);
@@ -1891,6 +2769,27 @@
       floatingPopup.className = "floating-popup";
       floatingPopup.id = "floatingPopup";
       doc.body.appendChild(floatingPopup);
+
+      if (payload.document && payload.document.html) {
+        const documentButton = doc.createElement("button");
+        documentButton.type = "button";
+        documentButton.className = "doc-button visible";
+        documentButton.id = "documentButton";
+        documentButton.setAttribute("aria-label", "Öppna dokumenttext");
+        documentButton.innerHTML = '<span class="doc-icon" aria-hidden="true"></span><span class="doc-title"></span>';
+        documentButton.querySelector(".doc-title").textContent = payload.document.title || "Dokumenttext";
+        doc.body.appendChild(documentButton);
+
+        const documentPreview = doc.createElement("div");
+        documentPreview.className = "doc-preview";
+        documentPreview.id = "documentPreview";
+        documentPreview.setAttribute("role", "dialog");
+        documentPreview.setAttribute("aria-modal", "false");
+        documentPreview.innerHTML = '<div class="doc-preview-header"><h2></h2><button type="button" class="doc-close" id="documentClose" title="Stäng" aria-label="Stäng">×</button></div><div class="doc-content"></div>';
+        documentPreview.querySelector("h2").textContent = payload.document.title || "Dokumenttext";
+        documentPreview.querySelector(".doc-content").innerHTML = sanitizeDocumentHtml(payload.document.html);
+        doc.body.appendChild(documentPreview);
+      }
 
       const aspect = payload.imageAspect || 1;
       payload.imagePhotos.forEach((photo) => {
@@ -1919,7 +2818,7 @@
 
       const script = doc.createElement("script");
       script.textContent = [
-        "var stage=document.querySelector('.stage'),surface=document.querySelector('.surface'),value=document.getElementById('value'),floatingPopup=document.getElementById('floatingPopup');",
+        "var stage=document.querySelector('.stage'),surface=document.querySelector('.surface'),value=document.getElementById('value'),floatingPopup=document.getElementById('floatingPopup'),documentButton=document.getElementById('documentButton'),documentPreview=document.getElementById('documentPreview'),documentClose=document.getElementById('documentClose');",
         "var view={zoom:1,panX:0,panY:0,dragging:false,dragStartX:0,dragStartY:0,startPanX:0,startPanY:0};",
         "function clamp(v,min,max){return Math.min(max,Math.max(min,v));}",
         "function apply(){surface.style.transform='translate('+view.panX+'px, '+view.panY+'px) scale('+view.zoom+')';value.textContent=Math.round(view.zoom*100)+'%';}",
@@ -1939,8 +2838,10 @@
         "document.getElementById('in').addEventListener('click',function(){zoomCenter(1.25);});",
         "document.getElementById('out').addEventListener('click',function(){zoomCenter(.8);});",
         "document.getElementById('fit').addEventListener('click',function(){view.zoom=1;view.panX=0;view.panY=0;apply();});",
+        "if(documentButton&&documentPreview){documentButton.addEventListener('click',function(event){event.stopPropagation();documentPreview.classList.add('open');});}",
+        "if(documentClose&&documentPreview){documentClose.addEventListener('click',function(event){event.stopPropagation();documentPreview.classList.remove('open');});}",
         "document.querySelectorAll('.marker').forEach(function(marker){marker.addEventListener('click',function(event){event.stopPropagation();openFloatingPopup(marker);document.querySelectorAll('.marker.open').forEach(function(open){if(open!==marker)open.classList.remove('open');});marker.classList.add('open');});});",
-        "document.addEventListener('click',function(event){if(!event.target.closest('.floating-popup')&&!event.target.closest('.marker')){floatingPopup.style.display='none';document.querySelectorAll('.marker.open').forEach(function(open){open.classList.remove('open');});}});",
+        "document.addEventListener('click',function(event){if(documentPreview&&!event.target.closest('.doc-preview')&&!event.target.closest('.doc-button'))documentPreview.classList.remove('open');if(!event.target.closest('.floating-popup')&&!event.target.closest('.marker')){floatingPopup.style.display='none';document.querySelectorAll('.marker.open').forEach(function(open){open.classList.remove('open');});}});",
         "apply();"
       ].join("");
       doc.body.appendChild(script);
