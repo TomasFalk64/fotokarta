@@ -993,14 +993,14 @@
           <div class="hint">Välj bilder direkt eller en ZIP-fil med bilder. Bilder utan GPS hoppas över.</div>
         </div>
         <div class="field">
+          <label for="quality">Bildkvalitet vid inläsning <span id="qualityValue">0.85</span></label>
+          <input type="range" id="quality" min="0.45" max="0.95" step="0.01" value="0.85">
+          <div class="hint">Används när bilder läses in. Ändra reglaget innan du väljer bilder. Redan inlästa bilder ändras inte.</div>
+        </div>
+        <div class="field">
           <label for="thumbSize">Miniatyrstorlek <span id="thumbSizeValue">56 px</span></label>
           <input type="range" id="thumbSize" min="20" max="120" step="2" value="56">
           <div class="hint">Storleken på miniaturen som används för fotomarkörer.</div>
-        </div>
-        <div class="field">
-          <label for="quality">Kvalitet <span id="qualityValue">0.85</span></label>
-          <input type="range" id="quality" min="0.45" max="0.95" step="0.01" value="0.85">
-          <div class="hint">Komprimeringskvalitet för popup-bilden.</div>
         </div>
       </section>
 
@@ -1168,6 +1168,11 @@
     });
     els.quality.addEventListener("input", () => {
       els.qualityValue.textContent = Number(els.quality.value).toFixed(2);
+    });
+    els.quality.addEventListener("change", () => {
+      if (state.photos.length) {
+        addLog("Ladda in bilder igen för att ändra befintliga bilder.", "warn");
+      }
     });
     els.zoomInBtn.addEventListener("click", () => zoomAtCenter(1.25));
     els.zoomOutBtn.addEventListener("click", () => zoomAtCenter(0.8));
