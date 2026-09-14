@@ -1020,6 +1020,20 @@
       </section>
 
       <section class="section">
+        <h2>Artpunkter</h2>
+        <input class="native-file" type="file" id="speciesInput" accept=".xlsx,.xls">
+        <label class="file-button" for="speciesInput">Läs in Excel med artfynd</label>
+        <button type="button" class="secondary" id="speciesToggle" disabled aria-pressed="true">Dölj artpunkter</button>
+        <div class="field">
+          <label for="speciesSize">Storlek på artpunkter <span id="speciesSizeValue">22 px</span></label>
+          <input type="range" id="speciesSize" min="8" max="48" step="2" value="22">
+        </div>
+        <div class="hint">Ost/Nord läses som SWEREF 99 TM. Lat/Lon läses som WGS84. En ny fil ersätter tidigare artfynd.</div>
+        <div class="hint" id="speciesStatus" role="status">Ingen artfil inläst.</div>
+        <div id="speciesLegend" class="hint"></div>
+      </section>
+
+      <section class="section">
         <h2>Logg</h2>
         <div class="log" id="log"></div>
       </section>
@@ -1103,6 +1117,10 @@
         name: "",
         polygons: []
       },
+      species: [],
+      speciesName: "",
+      speciesVisible: true,
+      speciesImportVersion: 0,
       photos: [],
       skipped: [],
       objectUrls: [],
@@ -1161,6 +1179,21 @@
     };
 
     defineKnownProjections();
+
+    document.getElementById("speciesInput").addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (file) await loadSpecies(file);
+      event.target.value = "";
+    });
+    document.getElementById("speciesToggle").addEventListener("click", () => {
+      state.speciesVisible = !state.speciesVisible;
+      closeFloatingPopup();
+      renderSpecies();
+    });
+    document.getElementById("speciesSize").addEventListener("input", () => {
+      document.getElementById("speciesSizeValue").textContent = `${document.getElementById("speciesSize").value} px`;
+      renderSpecies();
+    });
 
     els.thumbSize.addEventListener("input", () => {
       updateMarkerSize();
@@ -1435,7 +1468,7 @@
     }
 
     function hasDisplaySurface() {
-      return Boolean(state.imageDataUrl || state.photos.length);
+      return Boolean(state.imageDataUrl || state.photos.length || state.species.length || state.geojson.polygons.length);
     }
 
     function clamp(value, min, max) {
@@ -1743,7 +1776,8 @@
         const visibleCount = computeGeoJsonPaths().length;
         const skippedCount = Math.max(0, polygons.length - visibleCount);
         const skippedText = skippedCount ? ` ${skippedCount} utanför kartan hoppades över.` : "";
-        addLog(`GeoJSON klar: ${file.name}, ${visibleCount} polygon${visibleCount === 1 ? "" : "er"} visas.${skippedText}`, visibleCount ? "good" : "warn");
+        const systems = [...new Set(polygons.map((polygon) => `${polygon.sourceProjection}${polygon.inferredProjection ? " (tolkat från koordinaterna)" : " (angivet i filen)"}`))].join(", ");
+        addLog(`GeoJSON klar: ${file.name}, ${visibleCount} polygon${visibleCount === 1 ? "" : "er"} visas.${skippedText} Koordinatsystem: ${systems}.`, visibleCount ? "good" : "warn");
       } catch (error) {
         console.error(error);
         state.geojson = { name: "", polygons: [] };
@@ -1753,6 +1787,7 @@
     }
 
     function extractGeoJsonPolygons(geojson) {
+      const projection = readGeoJsonCrs(geojson && geojson.crs);
       const features = geojson && geojson.type === "FeatureCollection"
         ? geojson.features || []
         : geojson && geojson.type === "Feature"
@@ -1761,25 +1796,57 @@
 
       const polygons = [];
       features.forEach((feature) => {
-        collectGeoJsonGeometryPolygons(feature && feature.geometry, feature && feature.properties || {}, polygons);
+        collectGeoJsonGeometryPolygons(feature && feature.geometry, feature && feature.properties || {}, polygons, readGeoJsonCrs(feature && feature.crs) || projection);
       });
 
       return polygons.filter((polygon) => polygon.rings.some((ring) => ring.length >= 3));
     }
 
-    function collectGeoJsonGeometryPolygons(geometry, properties, polygons) {
+    function readGeoJsonCrs(crs) {
+      if (crs == null) return null;
+      const name = typeof crs === "string" ? crs : crs.properties && (crs.properties.name || (String(crs.type).toUpperCase() === "EPSG" ? `EPSG:${crs.properties.code}` : ""));
+      if (typeof name !== "string") throw new Error("Koordinatsystemet i crs stöds inte. Använd ett EPSG-namn.");
+      if (/^(?:urn:ogc:def:crs:OGC:(?:[^:]*:)?|OGC:)?CRS84$/i.test(name) || /^https?:\/\/www\.opengis\.net\/def\/crs\/OGC\/[^/]+\/CRS84$/i.test(name)) return "EPSG:4326";
+      const match = name.trim().match(/^(?:EPSG:|urn:(?:x-)?ogc:def:crs:EPSG:[^:]*:|https?:\/\/www\.opengis\.net\/def\/crs\/EPSG\/[^/]+\/|https?:\/\/www\.opengis\.net\/gml\/srs\/epsg\.xml#)(\d+)$/i);
+      if (!match) throw new Error(`Okänt koordinatsystem: ${name}`);
+      const projection = `EPSG:${Number(match[1])}`;
+      if (projection !== "EPSG:4326" && (!window.proj4 || !proj4.defs(projection))) throw new Error(`Koordinatsystem ${projection} stöds inte av det inlästa Proj4-biblioteket.`);
+      return projection;
+    }
+
+    function collectGeoJsonGeometryPolygons(geometry, properties, polygons, inheritedProjection = null) {
       if (!geometry) return;
+      const projection = readGeoJsonCrs(geometry.crs) || inheritedProjection;
+      const addPolygon = (coordinates) => {
+        const rings = normalizeGeoJsonPolygon(coordinates);
+        const points = rings.flat();
+        if (!points.length) return;
+        let sourceProjection = projection;
+        if (!sourceProjection) {
+          if (points.every(isLonLatCoordinate)) sourceProjection = "EPSG:4326";
+          else if (points.every((point) => point.x >= 100000 && point.x <= 1000000 && point.y >= 6000000 && point.y <= 8000000)) sourceProjection = "EPSG:3006";
+          else throw new Error("Koordinaterna kan inte tolkas som WGS84 eller SWEREF 99 TM. Ange koordinatsystem i filens crs-fält.");
+        }
+        const normalized = rings.map((ring) => ring.map((point) => {
+          if (sourceProjection !== "EPSG:4326" && !window.proj4) throw new Error("Proj4 kunde inte laddas. Kontrollera internetanslutningen.");
+          const [x, y] = sourceProjection === "EPSG:4326" ? [point.x, point.y] : proj4(sourceProjection, "EPSG:4326", [point.x, point.y]);
+          const result = { x, y, lon: x, lat: y };
+          if (!isGeoJsonCoordinate(result) || !isLonLatCoordinate(result)) throw new Error(`Ogiltig position för ${sourceProjection}.`);
+          return result;
+        }));
+        polygons.push({ rings: normalized, properties, sourceProjection, inferredProjection: !projection });
+      };
       if (geometry.type === "Polygon") {
-        polygons.push({ rings: normalizeGeoJsonPolygon(geometry.coordinates), properties });
+        addPolygon(geometry.coordinates);
       }
       if (geometry.type === "MultiPolygon") {
         (geometry.coordinates || []).forEach((coordinates) => {
-          polygons.push({ rings: normalizeGeoJsonPolygon(coordinates), properties });
+          addPolygon(coordinates);
         });
       }
       if (geometry.type === "GeometryCollection") {
         (geometry.geometries || []).forEach((childGeometry) => {
-          collectGeoJsonGeometryPolygons(childGeometry, properties, polygons);
+          collectGeoJsonGeometryPolygons(childGeometry, properties, polygons, projection);
         });
       }
     }
@@ -1787,8 +1854,8 @@
     function normalizeGeoJsonPolygon(coordinates) {
       return (coordinates || []).map((ring) => {
         return (ring || []).map((position) => {
-          const x = Number(position && position[0]);
-          const y = Number(position && position[1]);
+          const x = position && typeof position[0] === "number" ? position[0] : NaN;
+          const y = position && typeof position[1] === "number" ? position[1] : NaN;
           return { x, y, lat: y, lon: x };
         }).filter(isGeoJsonCoordinate);
       }).filter((ring) => ring.length >= 3);
@@ -1831,6 +1898,178 @@
       });
     }
 
+    function speciesCategory(value) {
+      const text = String(value ?? "").trim().toUpperCase();
+      const code = text.match(/\b(RE|CR|EN|VU|NT|DD|LC|NE|NA)\b/);
+      return code ? code[1] : text || "Ej angivet";
+    }
+
+    function speciesColor(category) {
+      return ({ RE: "#171717", CR: "#a50026", EN: "#e34a33", VU: "#f99020", NT: "#d4b400", DD: "#8064a2", LC: "#238b45", NE: "#64748b", NA: "#64748b" })[category] || "#64748b";
+    }
+
+    function parseSpeciesRows(rows, date1904 = false) {
+      const normalize = (value) => String(value ?? "").trim().toLowerCase().replace(/[\s_()-]/g, "");
+      const headerIndex = rows.findIndex((row) => row.some((value) => normalize(value) === "artnamn") && row.some((value) => normalize(value) === "id"));
+      if (headerIndex < 0) throw new Error("Hittar ingen rubrikrad med ID och Artnamn.");
+      const headers = rows[headerIndex].map(normalize);
+      const column = (...names) => headers.findIndex((value) => names.map(normalize).includes(value));
+      const columns = { id: column("ID"), name: column("Artnamn"), scientific: column("Vetenskapligt namn"), category: column("Rödlistade", "Rödlistad"), date: column("Startdatum"), east: column("Ost"), north: column("Nord"), lat: column("Lat", "Latitud", "Latitude"), lon: column("Lon", "Long", "Longitud", "Longitude") };
+      if ([columns.id, columns.name, columns.scientific, columns.category, columns.date].some((index) => index < 0)) throw new Error("Filen måste innehålla ID, Artnamn, Vetenskapligt namn, Rödlistade och Startdatum.");
+      const wgs = columns.lat >= 0 && columns.lon >= 0;
+      const sweref = columns.east >= 0 && columns.north >= 0;
+      if (!wgs && !sweref) throw new Error("Position saknas: använd Ost och Nord (SWEREF 99 TM) eller Lat och Lon (WGS84).");
+      const number = (value) => String(value ?? "").trim() ? Number(String(value).replace(/\s/g, "").replace(",", ".")) : NaN;
+      const points = [], skipped = [];
+      rows.slice(headerIndex + 1).forEach((row, index) => {
+        if (!row.some((value) => String(value ?? "").trim())) return;
+        try {
+          const id = String(row[columns.id] ?? "").trim();
+          const name = String(row[columns.name] ?? "").trim();
+          const scientific = String(row[columns.scientific] ?? "").trim();
+          if (!/^\d+$/.test(id)) throw new Error("ID saknas/är ogiltigt");
+          if (!name && !scientific) throw new Error("både artnamn och vetenskapligt namn saknas");
+          let lat = number(row[columns.lat]), lon = number(row[columns.lon]);
+          if ((!wgs || !Number.isFinite(lat) || !Number.isFinite(lon)) && sweref) {
+            const east = number(row[columns.east]), north = number(row[columns.north]);
+            if (!Number.isFinite(east) || !Number.isFinite(north) || east < 100000 || east > 1000000 || north < 6000000 || north > 8000000) throw new Error("ogiltig SWEREF 99 TM-position");
+            if (!window.proj4) throw new Error("Proj4 kunde inte laddas; kontrollera internetanslutningen");
+            [lon, lat] = proj4("EPSG:3006", "EPSG:4326", [east, north]);
+          }
+          if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new Error("ogiltig position");
+          let date = row[columns.date];
+          if (typeof date === "number") {
+            const parsed = XLSX.SSF.parse_date_code(date, { date1904 });
+            date = parsed ? `${parsed.y}-${String(parsed.m).padStart(2, "0")}-${String(parsed.d).padStart(2, "0")}` : "";
+          }
+          points.push({ id, name: name || scientific, scientific, category: speciesCategory(row[columns.category]), date: String(date ?? "").trim() || "Ej angivet", lat, lon });
+        } catch (error) {
+          skipped.push(`Rad ${headerIndex + index + 2}: ${error.message}`);
+        }
+      });
+      return { points, skipped };
+    }
+
+    async function loadSpecies(file) {
+      const version = ++state.speciesImportVersion;
+      try {
+        if (!window.XLSX) throw new Error("Excel-biblioteket kunde inte laddas. Kontrollera internetanslutningen och ladda om sidan.");
+        const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+        if (version !== state.speciesImportVersion) return;
+        let result;
+        for (const name of workbook.SheetNames) {
+          const rows = XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: 1, defval: "", raw: true, blankrows: true });
+          if (rows.some((row) => row.some((value) => String(value).trim().toLowerCase() === "artnamn"))) {
+            result = parseSpeciesRows(rows, !!workbook.Workbook?.WBProps?.date1904);
+            break;
+          }
+        }
+        if (!result) throw new Error("Hittar inget blad med kolumnen Artnamn.");
+        if (!result.points.length) throw new Error(`Inga giltiga artfynd. ${result.skipped.slice(0, 3).join("; ")}`);
+        state.species = result.points;
+        state.speciesName = file.name;
+        state.speciesVisible = true;
+        closeFloatingPopup();
+        renderPhotos();
+        renderGeoJson();
+        resetView();
+        updateUi();
+        addLog(`${file.name}: ${result.points.length} artfynd inlästa. ${result.skipped.length} rader hoppades över.`, result.skipped.length ? "warn" : "good");
+        if (result.skipped.length) addLog(result.skipped.slice(0, 5).join("; "), "warn");
+      } catch (error) {
+        addLog(`Kunde inte läsa artfil: ${error.message}`, "bad");
+      }
+    }
+
+    function computeSpeciesPositions() {
+      const bounds = state.geotiff ? null : computeFallbackBounds(state.photos, state.geojson.polygons);
+      if (bounds) state.photoBoxAspect = bounds.aspect;
+      return state.species.flatMap((point) => {
+        const mapped = getPhotoMapPoint(point, bounds);
+        return mapped ? [{ ...point, displayLat: mapped.lat, displayLon: mapped.lon }] : [];
+      });
+    }
+
+    // Shared by the editor and the exported, offline HTML map.
+    function mountSpecies(doc, overlay, popup, points, aspect, visible, colorFor, size = 22) {
+      size = Math.max(8, Math.min(48, Number(size) || 22));
+      overlay.querySelectorAll(".species-marker").forEach((node) => node.remove());
+      if (!visible) return;
+      const priority = (category) => ({ DD: 1, NT: 2, VU: 3, EN: 4, CR: 5, RE: 6 })[category] || 0;
+      const groups = new Map();
+      points.forEach((point) => {
+        const key = `${point.lat},${point.lon}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(point);
+      });
+      groups.forEach((group) => {
+        group.sort((a, b) => priority(b.category) - priority(a.category));
+        const point = group[0], marker = doc.createElement("button");
+        marker.type = "button";
+        marker.className = "species-marker";
+        Object.assign(marker.style, { position: "absolute", left: `${point.displayLon / aspect * 100}%`, top: `${(1 - point.displayLat) * 100}%`, width: "22px", height: "22px", minWidth: "22px", minHeight: "22px", padding: "0", border: "2px solid white", borderRadius: "50%", boxShadow: "0 0 0 1px #333", transform: "translate(-50%,-50%)", background: colorFor(point.category), color: "#fff", textShadow: "0 1px 2px black", fontSize: "12px", zIndex: String(2 + priority(point.category)), pointerEvents: "auto", cursor: "pointer" });
+        marker.textContent = group.length > 1 ? String(group.length) : "";
+        Object.assign(marker.style, { width: `${size}px`, height: `${size}px`, minWidth: `${size}px`, minHeight: `${size}px`, fontSize: `${Math.max(8, Math.round(size * 0.55))}px` });
+        marker.title = group.map((item) => `${item.name} (${item.category})`).join(", ");
+        marker.setAttribute("aria-label", marker.title);
+        marker.addEventListener("pointerdown", (event) => event.stopPropagation());
+        marker.addEventListener("dblclick", (event) => event.stopPropagation());
+        marker.addEventListener("click", (event) => {
+          event.stopPropagation();
+          popup.replaceChildren();
+          const content = doc.createElement("div");
+          Object.assign(content.style, { padding: "32px 12px 12px", maxHeight: "65vh", overflowY: "auto", overflowWrap: "anywhere" });
+          const close = doc.createElement("button");
+          close.type = "button";
+          close.className = "popup-close";
+          close.textContent = "×";
+          close.setAttribute("aria-label", "Stäng artfynd");
+          close.addEventListener("click", () => { popup.style.display = "none"; marker.focus(); });
+          popup.appendChild(close);
+          group.forEach((item) => {
+            const article = doc.createElement("article");
+            article.style.marginBottom = "18px";
+            for (const [tag, text] of [["strong", item.name], ["p", item.scientific], ["p", `Startdatum: ${item.date}`], ["p", `Rödlistade: ${item.category}`]]) {
+              const node = doc.createElement(tag);
+              node.textContent = text;
+              article.appendChild(node);
+            }
+            const link = doc.createElement("a");
+            link.href = `https://www.artportalen.se/Sighting/${encodeURIComponent(item.id)}`;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.textContent = `Visa fynd ${item.id} i Artportalen`;
+            article.appendChild(link);
+            content.appendChild(article);
+          });
+          popup.appendChild(content);
+          popup.style.display = "block";
+          close.focus();
+        });
+        overlay.appendChild(marker);
+      });
+    }
+
+    function renderSpecies() {
+      const points = computeSpeciesPositions();
+      mountSpecies(document, els.imageOverlay, els.floatingPopup, points, getDisplayAspect(), state.speciesVisible, speciesColor, document.getElementById("speciesSize").value);
+      const toggle = document.getElementById("speciesToggle");
+      toggle.disabled = !state.species.length;
+      toggle.textContent = state.speciesVisible ? "Dölj artpunkter" : "Visa artpunkter";
+      toggle.setAttribute("aria-pressed", String(state.speciesVisible));
+      document.getElementById("speciesStatus").textContent = state.species.length ? `${state.speciesName}: ${state.species.length} fynd, ${points.length} inom kartan. ${state.speciesVisible ? "" : "Artpunkterna är dolda."}` : "Ingen artfil inläst.";
+      const legend = document.getElementById("speciesLegend");
+      legend.replaceChildren();
+      [...new Set(state.species.map((point) => point.category))].sort().forEach((category) => {
+        const item = document.createElement("span");
+        item.style.cssText = "display:inline-block;margin:6px 10px 0 0";
+        const dot = document.createElement("span");
+        dot.style.cssText = `display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:4px;background:${speciesColor(category)}`;
+        item.append(dot, document.createTextNode(category));
+        legend.appendChild(item);
+      });
+    }
+
     function renderPhotos() {
       els.imageOverlay.innerHTML = "";
       const placed = computeDisplayPositions(state.photos);
@@ -1856,6 +2095,7 @@
 
         els.imageOverlay.appendChild(marker);
       });
+      renderSpecies();
     }
 
     function renderGeoJson() {
@@ -1882,7 +2122,7 @@
       }
 
       els.imageMap.removeAttribute("src");
-      if (!state.photos.length && !state.geojson.polygons.length) {
+      if (!state.photos.length && !state.geojson.polygons.length && !state.species.length) {
         els.imageSurface.classList.remove("no-map");
         els.imageSurface.style.removeProperty("--photo-box-aspect");
         return;
@@ -2300,14 +2540,10 @@
       const projection = state.geotiff.projection || 4326;
       let projected;
       try {
-        if (shouldUseRawGeoJsonCoordinates(point, projection)) {
-          projected = [point.x, point.y];
-        } else {
-          if (!window.proj4) return null;
-          projected = Number(projection) === 4326
-            ? [point.x, point.y]
-            : proj4("EPSG:4326", `EPSG:${projection}`, [point.x, point.y]);
-        }
+        if (Number(projection) !== 4326 && !window.proj4) return null;
+        projected = Number(projection) === 4326
+          ? [point.x, point.y]
+          : proj4("EPSG:4326", `EPSG:${projection}`, [point.x, point.y]);
       } catch (error) {
         return null;
       }
@@ -2328,29 +2564,8 @@
       };
     }
 
-    function shouldUseRawGeoJsonCoordinates(point, projection) {
-      if (Number(projection) === 4326) return true;
-      if (!isLonLatCoordinate(point)) return true;
-      return isRawCoordinateNearRaster(point);
-    }
-
     function isLonLatCoordinate(point) {
       return Math.abs(point.y) <= 90 && Math.abs(point.x) <= 180;
-    }
-
-    function isRawCoordinateNearRaster(point) {
-      const xmin = state.geotiff && state.geotiff.xmin;
-      const xmax = state.geotiff && state.geotiff.xmax;
-      const ymin = state.geotiff && state.geotiff.ymin;
-      const ymax = state.geotiff && state.geotiff.ymax;
-      if (![xmin, xmax, ymin, ymax].every(Number.isFinite)) return false;
-
-      const xPadding = Math.abs(xmax - xmin) * 2;
-      const yPadding = Math.abs(ymax - ymin) * 2;
-      return point.x >= xmin - xPadding
-        && point.x <= xmax + xPadding
-        && point.y >= ymin - yPadding
-        && point.y <= ymax + yPadding;
     }
 
     function isGeoJsonPolygonInsideDisplay(polygon, fallbackBounds) {
@@ -2418,7 +2633,7 @@
 
     function computeFallbackBounds(photos, polygons) {
       const points = [];
-      photos.forEach((photo) => {
+      [...photos, ...state.species].forEach((photo) => {
         if (Number.isFinite(photo.lat) && Number.isFinite(photo.lon)) {
           points.push({ x: photo.lon, y: photo.lat });
         }
@@ -2515,7 +2730,7 @@
     }
 
     function updateUi() {
-      els.downloadBtn.disabled = !state.imageDataUrl && !state.photos.length && !hasDocumentText() && !state.geojson.polygons.length;
+      els.downloadBtn.disabled = !state.imageDataUrl && !state.photos.length && !hasDocumentText() && !state.geojson.polygons.length && !state.species.length;
       els.downloadExcelBtn.disabled = !state.photos.length;
       if (!state.photos.length && els.floatingPopup) {
         els.floatingPopup.style.display = "none";
@@ -2543,6 +2758,11 @@
       state.document = { title: "", html: "" };
       state.geojson = { name: "", polygons: [] };
       state.photos = [];
+      state.speciesImportVersion++;
+      state.species = [];
+      state.speciesName = "";
+      state.speciesVisible = true;
+      document.getElementById("speciesInput").value = "";
       state.skipped = [];
       cleanupPhotoUrls();
       els.imageMap.removeAttribute("src");
@@ -2566,6 +2786,7 @@
       updateFileLabels();
       els.log.innerHTML = "";
       updateUi();
+      renderSpecies();
       addLog("Allt rensat.", "good");
     }
 
@@ -2582,6 +2803,9 @@
         imageAspect: getDisplayAspect(),
         geojsonName: state.geojson.name,
         geojsonPaths,
+        species: computeSpeciesPositions(),
+        speciesVisible: state.speciesVisible,
+        speciesSize: Number(document.getElementById("speciesSize").value),
         document: hasDocumentText() ? {
           title: state.document.title || "Dokumenttext",
           html: sanitizeDocumentHtml(state.document.html)
@@ -2808,6 +3032,34 @@
       floatingPopup.className = "floating-popup";
       floatingPopup.id = "floatingPopup";
       doc.body.appendChild(floatingPopup);
+
+      if (payload.species && payload.species.length) {
+        const panel = doc.createElement("div");
+        panel.style.cssText = "position:fixed;left:16px;bottom:16px;z-index:1001;background:white;padding:10px;border-radius:8px;max-width:280px;box-shadow:0 2px 8px #0003;font:14px Arial";
+        const toggle = doc.createElement("button");
+        toggle.id = "speciesToggle";
+        toggle.type = "button";
+        panel.appendChild(toggle);
+        panel.appendChild(document.getElementById("speciesLegend").cloneNode(true));
+        doc.body.appendChild(panel);
+        const speciesScript = doc.createElement("script");
+        speciesScript.textContent = `(() => {
+          const points = ${JSON.stringify(payload.species).replace(/</g, "\\u003c")};
+          const colorFor = ${speciesColor.toString()};
+          const mount = ${mountSpecies.toString()};
+          let visible = ${payload.speciesVisible !== false};
+          const toggle = document.getElementById("speciesToggle");
+          const popup = document.getElementById("floatingPopup");
+          function render() {
+            mount(document, document.querySelector(".overlay"), popup, points, ${Number(payload.imageAspect) || 1.35}, visible, colorFor, ${Number(payload.speciesSize) || 22});
+            toggle.textContent = visible ? "Dölj artpunkter" : "Visa artpunkter";
+            toggle.setAttribute("aria-pressed", String(visible));
+          }
+          toggle.addEventListener("click", () => { visible = !visible; popup.style.display = "none"; render(); });
+          render();
+        })();`;
+        doc.body.appendChild(speciesScript);
+      }
 
       if (payload.document && payload.document.html) {
         const documentButton = doc.createElement("button");
