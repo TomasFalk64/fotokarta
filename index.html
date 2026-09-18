@@ -7,16 +7,16 @@
   <style>
     :root {
       color-scheme: light;
-      --ink: #1f2933;
-      --muted: #687582;
-      --line: #d8dee4;
-      --panel: #f7f9fb;
-      --accent: #0b6f6a;
-      --accent-dark: #07534f;
-      --warn: #9b5d00;
-      --bad: #a33a2f;
-      --good: #177245;
-      --map-bg: #e8edf1;
+      --ink: #1f2924;
+      --muted: #626b60;
+      --line: #cfc8ad;
+      --panel: #fffdf4;
+      --accent: #476f56;
+      --accent-dark: #23382b;
+      --warn: #886c2d;
+      --bad: #98554d;
+      --good: #3a5e48;
+      --map-bg: #f4f5f1;
     }
 
     * {
@@ -26,9 +26,9 @@
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: Arial, Helvetica, sans-serif;
+      font-family: "Segoe UI", system-ui, sans-serif;
       color: var(--ink);
-      background: #ffffff;
+      background: var(--map-bg);
     }
 
     .app {
@@ -486,8 +486,19 @@
       pointer-events: none;
     }
 
-    .field:hover .hint {
+    .field .hint {
       display: block;
+      visibility: hidden;
+      opacity: 0;
+      transition: opacity 150ms ease, visibility 0s linear 150ms;
+    }
+
+    .field:not(.range-field):not(:has(.file-picker)):hover .hint,
+    .range-field:has(> label:hover) .hint,
+    .field:has(.file-button:hover) .hint {
+      visibility: visible;
+      opacity: 1;
+      transition-delay: 400ms;
     }
 
     .actions {
@@ -558,7 +569,7 @@
     .log {
       display: grid;
       gap: 7px;
-      max-height: 210px;
+      max-height: 168px;
       overflow: auto;
       padding-right: 2px;
     }
@@ -960,31 +971,227 @@
       }
     }
   </style>
+  <!-- Shared with standalone exports so controls and reading panels stay consistent. -->
+  <style id="field-guide-theme">
+    :root {
+      color-scheme: light;
+      --ink: #1f2924;
+      --muted: #626b60;
+      --line: #cfc8ad;
+      --panel: #fffdf4;
+      --accent: #476f56;
+      --accent-dark: #31513e;
+      --map-bg: #f4f5f1;
+      --button: #f7f4e8;
+      --selected: #e4eee7;
+      --shadow: 0 4px 18px rgba(77, 65, 38, .10);
+    }
+    html, body { background: var(--map-bg); color: var(--ink); font-family: "Segoe UI", system-ui, sans-serif; font-size: 13px; line-height: 1.45; }
+    h1, h2, h3 { font-family: Georgia, "Times New Roman", serif; color: var(--accent-dark); }
+    h1 { font-size: 25px; }
+    a { color: var(--accent-dark); text-underline-offset: 3px; }
+    .sidebar { padding: 18px 16px; background: var(--panel); box-shadow: 3px 0 16px rgba(77, 65, 38, .04); }
+    .sidebar-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 12px; margin-bottom: 16px; }
+    .sidebar-header h1 { margin: 0; min-width: 0; }
+    button#infoButton { width: 34px; height: 34px; min-width: 34px; padding: 0; border-radius: 50%; font: bold 18px Georgia, serif; flex-shrink: 0; }
+    .info-popup { position: fixed; inset: 76px auto auto 16px; margin: 0; width: min(358px, calc(100vw - 32px)); max-height: calc(100dvh - 92px); overflow: auto; padding: 14px 14px 28px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
+    .info-popup-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+    .info-popup-header h2 { margin: 0; font-size: 18px; }
+    .info-popup .lede { margin: 0; }
+    .lede { font-size: 13px; margin-bottom: 14px; }
+    .lede strong { color: var(--muted); font-size: 12px; font-weight: 400; padding-left: 10px; border-left: 2px solid var(--line); }
+    .section { padding: 8px 0 8px 12px; border-top: 0; }
+    .section h2, .section .field-heading { font-family: Georgia, "Times New Roman", serif; font-size: 16px; font-weight: 700; text-transform: none; letter-spacing: .01em; color: var(--accent-dark); margin: 0 0 8px -12px; }
+    .attachment-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .attachment-panel button, .attachment-panel .file-button { width: auto; }
+    .field { margin-bottom: 10px; }
+    .field:has(> .field-heading) { margin-bottom: 16px; }
+    .field:last-child { margin-bottom: 0; }
+    .range-field { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(64px, 1fr) 44px; align-items: center; gap: 8px; }
+    .range-field > label { margin: 0; justify-self: start; }
+    .range-value { padding: 3px 1px; border: 1px solid var(--line); border-radius: 5px; background: var(--button); color: var(--accent-dark); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; box-shadow: 0 3px 8px rgba(77, 65, 38, .20); }
+    .range-field > input[type="range"] { min-width: 0; margin: 0; }
+    label { font-size: 13px; margin-bottom: 5px; font-weight: 600; }
+    label > span { color: var(--accent-dark); font-variant-numeric: tabular-nums; }
+    button, input, select { font-family: inherit; font-size: 13px; }
+    button:not(.image-photo):not(.marker):not(.species-marker), .file-button {
+      min-height: 30px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px;
+      color: var(--accent-dark); background: var(--button); font-weight: 600;
+      box-shadow: 0 3px 8px rgba(77, 65, 38, .20);
+    }
+    button:not(.image-photo):not(.marker):not(.species-marker):hover:not(:disabled),
+    button:not(.image-photo):not(.marker):not(.species-marker)[aria-pressed="true"]:not(:disabled),
+    .file-button:hover { background: var(--selected); border-color: var(--accent); }
+    button:not(.image-photo):not(.marker):not(.species-marker):disabled {
+      color: #77796e; background: #eeeee5; border-color: #d9d5c5;
+    }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .native-file:focus-visible + .file-button { outline: 2px solid var(--accent); outline-offset: 3px; }
+    input[type="text"], input[type="number"], select, .floating-popup .photo-title {
+      min-height: 34px; padding: 6px 8px; border-color: var(--line); color: var(--ink); background: var(--panel);
+    }
+    input[type="range"], input[type="checkbox"] { accent-color: var(--accent); }
+    input[type="range"] { margin: 4px 0; cursor: pointer; }
+    .range-field > input[type="range"] {
+      appearance: none; -webkit-appearance: none; height: 28px; padding: 0; border: 0; border-radius: 6px;
+      background: repeating-linear-gradient(to right, #a39a7e 0 1px, transparent 1px 10px) center calc(50% + 11px) / calc(100% - 18px) 4px no-repeat;
+    }
+    .range-field > input[type="range"]::-webkit-slider-runnable-track {
+      height: 6px; border: 1px solid #b5ad92; border-radius: 3px;
+      background: linear-gradient(to right, var(--accent) 0 var(--range-fill, 0%), #ded8c5 var(--range-fill, 0%) 100%); box-shadow: inset 0 1px 2px rgba(77, 65, 38, .22), 0 1px 0 var(--panel);
+    }
+    .range-field > input[type="range"]::-moz-range-track {
+      box-sizing: border-box; height: 6px; border: 1px solid #b5ad92; border-radius: 3px;
+      background: #ded8c5; box-shadow: inset 0 1px 2px rgba(77, 65, 38, .22), 0 1px 0 var(--panel);
+    }
+    .range-field > input[type="range"]::-moz-range-progress { height: 4px; border-radius: 3px; background: var(--accent); box-shadow: inset 0 1px 2px rgba(77, 65, 38, .22); }
+    .range-field > input[type="range"]::-webkit-slider-thumb {
+      appearance: none; -webkit-appearance: none; box-sizing: border-box; width: 18px; height: 18px; margin-top: -7px;
+      border: 3px solid var(--accent-dark); border-radius: 50%; background: linear-gradient(var(--panel), #e9e2cc);
+      box-shadow: inset 0 1px 0 #fff, 0 3px 6px rgba(77, 65, 38, .38);
+    }
+    .range-field > input[type="range"]::-moz-range-thumb {
+      box-sizing: border-box; width: 18px; height: 18px; border: 3px solid var(--accent-dark); border-radius: 50%;
+      background: linear-gradient(var(--panel), #e9e2cc); box-shadow: inset 0 1px 0 #fff, 0 3px 6px rgba(77, 65, 38, .38);
+    }
+    .range-field > input[type="range"]:active::-webkit-slider-thumb { background: var(--selected); }
+    .range-field > input[type="range"]:active::-moz-range-thumb { background: var(--selected); }
+    @media (forced-colors: active) {
+      .range-field > input[type="range"]::-webkit-slider-runnable-track { background: Canvas; border-color: CanvasText; }
+      .range-field > input[type="range"]::-moz-range-track { background: Canvas; border-color: CanvasText; }
+      .range-field > input[type="range"]::-moz-range-progress { background: Highlight; }
+      .range-field > input[type="range"]::-webkit-slider-thumb { background: ButtonFace; border-color: ButtonText; }
+      .range-field > input[type="range"]::-moz-range-thumb { background: ButtonFace; border-color: ButtonText; }
+    }
+    .check-row { color: var(--ink); }
+    .actions { gap: 8px; margin-top: 12px; }
+    #downloadBtn:not(:disabled), #downloadExcelBtn:not(:disabled), #documentSaveBtn { border-color: var(--accent); }
+    #speciesToggle { margin: 6px 0 10px; }
+    .hint { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow); }
+    .field:has(:focus-visible) .hint { visibility: visible; opacity: 1; transition-delay: 0s; }
+    @media (prefers-reduced-motion: reduce) {
+      .field .hint { transition-duration: 0s; }
+    }
+    #speciesStatus, #speciesLegend { position: static; display: block; width: auto; padding: 0; margin: 6px 0 0; border: 0; box-shadow: none; background: transparent; overflow-wrap: anywhere; }
+    #speciesLegend:empty { display: none; }
+    .stat { background: var(--panel); padding: 8px; }
+    .stat strong { font-family: Georgia, serif; color: var(--accent-dark); }
+    .log { gap: 6px; }
+    .log-item { border-radius: 0 6px 6px 0; background: var(--button); border-left-color: var(--line); padding: 7px 9px; font-size: 12px; }
+    .log-item.good { background: #e4eee7; border-left-color: #476f56; }
+    .log-item.warn { background: #f5eed5; border-left-color: #886c2d; }
+    .log-item.bad { background: #f3e4df; border-left-color: #98554d; }
+    .image-surface, .surface { box-shadow: 0 6px 24px rgba(77, 65, 38, .14); }
+    .image-surface.no-map, .surface.no-map {
+      background: linear-gradient(90deg, rgba(117, 127, 99, .12) 1px, transparent 1px), linear-gradient(0deg, rgba(117, 127, 99, .12) 1px, transparent 1px), var(--panel);
+      background-size: 64px 64px; border-color: var(--line);
+    }
+    .floating-popup, .image-popup, .popup, .document-modal, .document-preview, .doc-preview,
+    .map-badge, .badge, .zoom-controls, .zoom, .species-panel {
+      border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow);
+    }
+    .floating-popup b, .image-popup b, .popup b, .zoom-value, .zoom .value,
+    .floating-popup .popup-tools .popup-zoom-value { color: var(--ink); }
+    .floating-popup .zoom-wrap, .image-popup img, .popup img, .photo-popup img { background: var(--map-bg); }
+    .floating-popup { box-sizing: border-box; flex-direction: column; }
+    .floating-popup:has(> .zoom-wrap) { height: calc(80dvh - 32px); max-height: calc(100dvh - 32px); }
+    .floating-popup .zoom-wrap { flex: 1 1 0; min-height: 0; height: auto; max-height: none; }
+    .floating-popup .popup-meta { flex: 0 0 auto; }
+    .floating-popup .photo-title { box-sizing: border-box; min-width: 0; }
+    .floating-popup article { border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+    .floating-popup article:last-child { border-bottom: 0; padding-bottom: 0; }
+    .floating-popup article strong { font: bold 17px Georgia, serif; color: var(--accent-dark); }
+    .floating-popup article p { margin: 6px 0; }
+    .document-preview-header, .doc-preview-header { background: var(--button); border-color: var(--line); }
+    .document-modal-backdrop { background: rgba(39, 48, 38, .36); }
+    .document-editor { background: var(--panel); color: var(--ink); border-color: var(--line); }
+    .document-editor:focus { border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: none; }
+    .document-editor.drag-over { background: var(--selected); border-color: var(--accent); }
+    .document-editor.empty::before { color: var(--muted); }
+    .document-icon, .doc-icon { border-color: var(--accent); background: var(--panel); }
+    .document-icon::before, .doc-icon::before { border-color: var(--accent); background: var(--button); }
+    .document-icon::after, .doc-icon::after { background: var(--accent); box-shadow: 0 5px 0 var(--accent), 0 10px 0 var(--accent); }
+    button.document-map-button, button.doc-button { max-width: min(340px, calc(100% - 250px)); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
+    .zoom-controls button:not(.fit), .zoom button.square, button.document-close, button.doc-close,
+    .floating-popup button.popup-close, .floating-popup button[data-popup-zoom="in"], .floating-popup button[data-popup-zoom="out"] {
+      width: 34px; height: 34px; min-width: 34px; min-height: 34px; padding: 0; border-radius: 50%; font-size: 20px; font-weight: 400; line-height: 1; flex-shrink: 0;
+    }
+    .species-panel { position: fixed; left: 16px; bottom: 16px; z-index: 1001; max-width: min(280px, calc(100vw - 32px)); padding: 10px; }
+    .map-workspace { position: relative; min-width: 0; width: 100%; --map-control-height: 44px; }
+    .map-workspace > .stage { position: relative; box-sizing: border-box; width: 100%; }
+    .map-workspace > button.document-map-button, .map-workspace > button.doc-button {
+      position: absolute; width: max-content; max-width: min(260px, calc(100% - 24px));
+    }
+    .map-workspace > .zoom-controls, .map-workspace > .zoom { position: absolute; box-sizing: border-box; width: max-content; }
+    .map-workspace > button.document-map-button, .map-workspace > button.doc-button,
+    .map-workspace > .zoom-controls, .map-workspace > .zoom { box-sizing: border-box; height: var(--map-control-height); }
+    .map-workspace > .zoom-controls, .map-workspace > .zoom { padding: 4px; }
+    .map-footer { position: absolute; bottom: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+    .map-footer > .species-panel, .map-footer > .badge { position: static; box-sizing: border-box; max-width: 100%; overflow-wrap: anywhere; }
+    .image-surface > img, .surface > img { max-height: calc(100vh - var(--map-top-space, 42px) - var(--map-bottom-space, 42px)); }
+    @media (max-width: 860px) {
+      .image-surface.no-map { width: min(720px, calc(100vw - 84px)); }
+      .image-surface > img { max-height: calc(64vh - var(--map-top-space, 42px) - var(--map-bottom-space, 42px)); }
+    }
+    @media (max-width: 540px) {
+      .sidebar { padding: 14px; }
+      button.document-map-button, button.doc-button { max-width: calc(100% - 24px); }
+      .document-map-button.visible ~ .zoom-controls, body:has(.doc-button.visible) .zoom { top: 68px; }
+      .floating-popup { right: 8px; top: 8px; width: calc(100% - 16px); box-sizing: border-box; }
+      .floating-popup .popup-meta { grid-template-columns: minmax(0, 1fr); }
+      .document-modal-backdrop { padding: 8px; }
+      .document-modal { padding: 12px; gap: 8px; max-height: calc(100dvh - 16px); grid-template-rows: auto auto minmax(100px, 1fr) auto; }
+      .document-editor { min-height: 100px; }
+    }
+    @media (pointer: coarse), (max-width: 540px) {
+      .map-workspace { --map-control-height: 54px; }
+      button#infoButton { width: 44px; height: 44px; min-width: 44px; }
+      button:not(.image-photo):not(.marker):not(.species-marker), .file-button { min-height: 44px; }
+      .zoom-controls button:not(.fit), .zoom button.square, button.document-close, button.doc-close,
+      .floating-popup button.popup-close, .floating-popup button[data-popup-zoom="in"], .floating-popup button[data-popup-zoom="out"] { width: 44px; height: 44px; min-width: 44px; }
+      input[type="text"], input[type="number"], select, .floating-popup .photo-title { min-height: 44px; font-size: 16px; }
+      input[type="range"] { min-height: 32px; }
+    }
+  </style>
 </head>
 <body>
   <main class="app">
     <aside class="sidebar">
-      <h1>Fotokartgenerator</h1>
-      <p class="lede">
-        <span>Ladda upp bilder och karta.</span>
-        <span>Skapa en fristående HTML-karta.</span>
-        <span>Skapa Excelfil för export till Artportalen.</span>
+      <header class="sidebar-header">
+        <h1>Fotokartgenerator</h1>
+        <button type="button" id="infoButton" popovertarget="appInfo" title="Om Fotokartgenerator" aria-label="Om Fotokartgenerator">i</button>
+      </header>
+      <div class="info-popup" id="appInfo" popover role="dialog" aria-labelledby="appInfoTitle">
+        <div class="info-popup-header">
+          <h2 id="appInfoTitle">Om Fotokartgenerator</h2>
+          <button type="button" class="document-close" popovertarget="appInfo" popovertargetaction="hide" title="Stäng information" aria-label="Stäng information">×</button>
+        </div>
+        <p class="lede">
+        <span>Ladda upp karta och bilder.</span>
+        <span>Skriv in ev. in bildtext.</span>
+        <span>Lägg till artpunkter och polygon</span>
+        <span>Klistra in text med områdesbeskrivning</span>
+        <span>Allt förpackas i en fristående nedladdningsbar HTML-fil.</span>
+        <span>Du kan också skapa Excelfil för export till Artportalen.</span>
+        <span> </span>
         <strong>GPS-position blockeras tyvärr av Android och iOS på mobilen, men kan användas på dator.</strong>
-      </p>
+        <span> </span>
+        </p>
+      </div>
 
       <section class="section">
         
         <div class="field">
-          <label for="geotiffInput">GeoTIFF-karta</label>
+          <label class="field-heading" for="geotiffInput">GeoTIFF-karta</label>
           <div class="file-picker">
             <input class="native-file" type="file" id="geotiffInput" accept=".tif,.tiff,image/tiff">
             <label class="file-button" for="geotiffInput">Välj fil</label>
             <span class="file-name" id="geotiffFileName">Ingen fil vald</span>
           </div>
-          <div class="hint">Kartan visas utan extern bakgrund, bara vald GeoTIFF och placerade foton.</div>
+          <div class="hint">Välj en karta i geotiff-format.</div>
         </div>
         <div class="field">
-          <label for="imageInput">GPS-märkta bilder</label>
+          <label class="field-heading" for="imageInput">GPS-märkta bilder</label>
           <div class="file-picker">
             <input class="native-file" type="file" id="imageInput" multiple accept="image/*,.zip,application/zip">
             <label class="file-button" for="imageInput">Välj fil</label>
@@ -992,14 +1199,16 @@
           </div>
           <div class="hint">Välj bilder direkt eller en ZIP-fil med bilder. Bilder utan GPS hoppas över.</div>
         </div>
-        <div class="field">
-          <label for="quality">Bildkvalitet vid inläsning <span id="qualityValue">0.85</span></label>
+        <div class="field range-field">
+          <label for="quality">Bildkvalitet</label>
           <input type="range" id="quality" min="0.45" max="0.95" step="0.01" value="0.85">
+          <output class="range-value" id="qualityValue" for="quality">85 %</output>
           <div class="hint">Används när bilder läses in. Ändra reglaget innan du väljer bilder. Redan inlästa bilder ändras inte.</div>
         </div>
-        <div class="field">
-          <label for="thumbSize">Miniatyrstorlek <span id="thumbSizeValue">56 px</span></label>
+        <div class="field range-field">
+          <label for="thumbSize">Miniatyrstorlek</label>
           <input type="range" id="thumbSize" min="20" max="120" step="2" value="56">
+          <output class="range-value" id="thumbSizeValue" for="thumbSize">56 px</output>
           <div class="hint">Storleken på miniaturen som används för fotomarkörer.</div>
         </div>
       </section>
@@ -1012,8 +1221,11 @@
           </div>
           <div class="attachment-panel">
             <h2>Polygon</h2>
-            <input class="native-file" type="file" id="geojsonInput" accept=".geojson,.json,application/geo+json,application/json">
-            <label class="file-button" for="geojsonInput">Ladda GeoJSON</label>
+            <div class="file-picker">
+              <input class="native-file" type="file" id="geojsonInput" accept=".geojson,.json,application/geo+json,application/json">
+              <label class="file-button" for="geojsonInput">Ladda GeoJSON</label>
+              <span class="file-name" id="geojsonFileName" role="status">Ingen fil vald</span>
+            </div>
           </div>
         </div>
         <div class="hint">Klistra in text från Word eller importera .txt/.md. GeoJSON visas som polygonlager på kartan.</div>
@@ -1024,9 +1236,10 @@
         <input class="native-file" type="file" id="speciesInput" accept=".xlsx,.xls">
         <label class="file-button" for="speciesInput">Läs in Excel med artfynd</label>
         <button type="button" class="secondary" id="speciesToggle" disabled aria-pressed="true">Dölj artpunkter</button>
-        <div class="field">
-          <label for="speciesSize">Storlek på artpunkter <span id="speciesSizeValue">22 px</span></label>
+        <div class="field range-field">
+          <label for="speciesSize">Storlek på artpunkter</label>
           <input type="range" id="speciesSize" min="8" max="48" step="2" value="22">
+          <output class="range-value" id="speciesSizeValue" for="speciesSize">22 px</output>
         </div>
         <div class="hint">Ost/Nord läses som SWEREF 99 TM. Lat/Lon läses som WGS84. En ny fil ersätter tidigare artfynd.</div>
         <div class="hint" id="speciesStatus" role="status">Ingen artfil inläst.</div>
@@ -1045,7 +1258,7 @@
       </div>
     </aside>
 
-    <section class="map-wrap">
+    <section class="map-wrap map-workspace">
       <div class="image-stage" id="imageStage">
         <div class="image-surface" id="imageSurface">
           <img id="imageMap" alt="">
@@ -1066,9 +1279,9 @@
         <div class="document-preview-content" id="documentPreviewContent"></div>
       </div>
       <div class="zoom-controls" aria-label="Zoomkontroller">
-        <button type="button" id="zoomOutBtn" title="Zooma ut">-</button>
+        <button type="button" id="zoomOutBtn" title="Zooma ut" aria-label="Zooma ut">−</button>
         <span class="zoom-value" id="zoomValue">100%</span>
-        <button type="button" id="zoomInBtn" title="Zooma in">+</button>
+        <button type="button" id="zoomInBtn" title="Zooma in" aria-label="Zooma in">+</button>
         <button type="button" class="fit" id="zoomResetBtn" title="Passa in kartbilden">Passa</button>
       </div>
       <div class="map-badge" id="mapBadge">Välj en GeoTIFF och några GPS-märkta bilder för att börja.</div>
@@ -1140,6 +1353,7 @@
       geotiffInput: document.getElementById("geotiffInput"),
       imageInput: document.getElementById("imageInput"),
       geojsonInput: document.getElementById("geojsonInput"),
+      geojsonFileName: document.getElementById("geojsonFileName"),
       geotiffFileName: document.getElementById("geotiffFileName"),
       imageFileName: document.getElementById("imageFileName"),
       downloadBtn: document.getElementById("downloadBtn"),
@@ -1200,7 +1414,7 @@
       renderPhotos();
     });
     els.quality.addEventListener("input", () => {
-      els.qualityValue.textContent = Number(els.quality.value).toFixed(2);
+      els.qualityValue.textContent = `${Math.round(Number(els.quality.value) * 100)} %`;
     });
     els.quality.addEventListener("change", () => {
       if (state.photos.length) {
@@ -1297,8 +1511,92 @@
     });
 
     verifyLibraries();
+    document.querySelectorAll('.range-field input[type="range"]').forEach((input) => {
+      const updateRangeFill = () => {
+        const fraction = (Number(input.value) - Number(input.min)) / (Number(input.max) - Number(input.min));
+        input.style.setProperty("--range-fill", `calc(9px + (100% - 18px) * ${fraction})`);
+        input.setAttribute("aria-valuetext", input.id === "quality" ? `${Math.round(Number(input.value) * 100)} %` : `${input.value} px`);
+      };
+      input.addEventListener("input", updateRangeFill);
+      updateRangeFill();
+    });
     updateMarkerSize();
     renderDocumentUi();
+
+    mountMapLayout(els.imageStage, els.imageSurface, els.documentMapButton, document.querySelector(".zoom-controls"));
+
+    // Measure the untransformed map, so panning and zooming never move the controls.
+    // This same function is embedded in standalone exports.
+    function mountMapLayout(stage, surface, documentButton, zoomControls) {
+      const win = stage.ownerDocument.defaultView;
+      const footer = stage.parentElement.querySelector(".map-footer");
+      let pending = false;
+      function place(element, left, top) {
+        if (!element) return;
+        element.style.left = `${Math.round(left)}px`;
+        element.style.top = `${Math.round(top)}px`;
+        element.style.right = "auto";
+      }
+      function layout() {
+        const width = stage.clientWidth;
+        if (!width) return;
+        const edge = 12, gap = 16;
+        const available = Math.max(0, width - edge * 2);
+        const mapWidth = surface.offsetWidth;
+        const documentWidth = documentButton?.classList.contains("visible") ? documentButton.offsetWidth : 0;
+        const zoomWidth = zoomControls.offsetWidth;
+        const documentHeight = documentWidth ? documentButton.offsetHeight : 0;
+        const bottomSpace = footer ? footer.offsetHeight + edge + gap : 42;
+        stage.style.setProperty("--map-bottom-space", `${bottomSpace}px`);
+        const leftSpace = documentWidth ? documentWidth + gap : 0;
+        const rightSpace = zoomWidth + gap;
+        const groupWidth = leftSpace + mapWidth + rightSpace;
+        const beside = mapWidth > 0 && groupWidth <= available && width > 540;
+        let footerLeft, footerWidth;
+        if (beside) {
+          const topSpace = edge + Math.max(documentHeight, zoomControls.offsetHeight) + gap;
+          stage.style.setProperty("--map-top-space", `${topSpace}px`);
+          stage.style.padding = `${topSpace}px ${edge + rightSpace}px ${bottomSpace}px ${edge + leftSpace}px`;
+          const left = (width - groupWidth) / 2;
+          const top = Math.max(edge, surface.offsetTop - Math.max(documentHeight, zoomControls.offsetHeight) - gap);
+          place(documentButton, left, top);
+          place(zoomControls, left + leftSpace + mapWidth + gap, top);
+          footerLeft = left;
+          footerWidth = groupWidth;
+        } else {
+          const controlsWidth = documentWidth ? documentWidth + gap + zoomWidth : zoomWidth;
+          const stacked = controlsWidth > available;
+          const toolbarHeight = stacked ? documentHeight + gap + zoomControls.offsetHeight : Math.max(documentHeight, zoomControls.offsetHeight);
+          const toolbarWidth = Math.min(available, Math.max(mapWidth, stacked ? Math.max(documentWidth, zoomWidth) : controlsWidth));
+          const left = (width - toolbarWidth) / 2;
+          stage.style.setProperty("--map-top-space", `${edge + toolbarHeight + gap}px`);
+          stage.style.padding = `${edge + toolbarHeight + gap}px 42px ${bottomSpace}px`;
+          place(documentButton, left, edge);
+          place(zoomControls, left + toolbarWidth - zoomWidth, stacked ? edge + documentHeight + gap : edge);
+          footerLeft = left;
+          footerWidth = toolbarWidth;
+        }
+        if (footer) {
+          footer.style.left = `${Math.round(footerLeft)}px`;
+          footer.style.width = `${Math.round(footerWidth)}px`;
+        }
+      }
+      function schedule() {
+        if (pending) return;
+        pending = true;
+        win.requestAnimationFrame(() => { pending = false; layout(); });
+      }
+      if (win.ResizeObserver) {
+        const observer = new win.ResizeObserver(schedule);
+        [stage, surface, documentButton, zoomControls, footer].filter(Boolean).forEach(element => observer.observe(element));
+      }
+      if (documentButton && win.MutationObserver) {
+        new win.MutationObserver(schedule).observe(documentButton, { attributes: true, attributeFilter: ["class"], childList: true, subtree: true, characterData: true });
+      }
+      win.addEventListener("resize", schedule);
+      surface.querySelector("img")?.addEventListener("load", schedule);
+      schedule();
+    }
 
     function addLog(message, type = "good") {
       const item = document.createElement("div");
@@ -1336,7 +1634,7 @@
         return false;
       }
 
-      addLog("Klar. Välj GeoTIFF och/eller GPS-bilder.", "good");
+      addLog("Välj GeoTIFF-karta och/eller GPS-bilder.", "good");
       if (!window.proj4) {
         addLog("Proj4 saknas. GeoTIFF i SWEREF99/RT90 kan behöva internetåtkomst till proj4-CDN.", "warn");
       }
@@ -2024,6 +2322,7 @@
           close.className = "popup-close";
           close.textContent = "×";
           close.setAttribute("aria-label", "Stäng artfynd");
+          close.title = "Stäng artfynd";
           close.addEventListener("click", () => { popup.style.display = "none"; marker.focus(); });
           popup.appendChild(close);
           group.forEach((item) => {
@@ -2168,7 +2467,7 @@
         event.stopPropagation();
         closeFloatingPopup();
       });
-      popup.style.display = "block";
+      popup.style.display = "flex";
       img.addEventListener("load", () => fitPopupImageToFrame(zoomWrap), { once: true });
       if (img.complete) fitPopupImageToFrame(zoomWrap);
       els.imageOverlay.querySelectorAll(".image-photo.open").forEach((openMarker) => {
@@ -2730,6 +3029,8 @@
     }
 
     function updateUi() {
+      els.geojsonFileName.textContent = state.geojson.name || "Ingen fil vald";
+      els.geojsonFileName.title = state.geojson.name;
       els.downloadBtn.disabled = !state.imageDataUrl && !state.photos.length && !hasDocumentText() && !state.geojson.polygons.length && !state.species.length;
       els.downloadExcelBtn.disabled = !state.photos.length;
       if (!state.photos.length && els.floatingPopup) {
@@ -2997,6 +3298,7 @@
         ".zoom .value{min-width:48px;text-align:center;font-size:13px;color:#34424f}"
       ].join("\n");
       doc.head.appendChild(style);
+      doc.head.appendChild(doc.importNode(document.getElementById("field-guide-theme"), true));
 
       const stage = doc.createElement("main");
       stage.className = "stage";
@@ -3026,7 +3328,13 @@
       surface.appendChild(geojsonOverlay);
       surface.appendChild(overlay);
       stage.appendChild(surface);
-      doc.body.appendChild(stage);
+      const workspace = doc.createElement("section");
+      workspace.className = "map-workspace";
+      workspace.appendChild(stage);
+      doc.body.appendChild(workspace);
+      const footer = doc.createElement("div");
+      footer.className = "map-footer";
+      workspace.appendChild(footer);
 
       const floatingPopup = doc.createElement("div");
       floatingPopup.className = "floating-popup";
@@ -3035,13 +3343,13 @@
 
       if (payload.species && payload.species.length) {
         const panel = doc.createElement("div");
-        panel.style.cssText = "position:fixed;left:16px;bottom:16px;z-index:1001;background:white;padding:10px;border-radius:8px;max-width:280px;box-shadow:0 2px 8px #0003;font:14px Arial";
+        panel.className = "species-panel";
         const toggle = doc.createElement("button");
         toggle.id = "speciesToggle";
         toggle.type = "button";
         panel.appendChild(toggle);
         panel.appendChild(document.getElementById("speciesLegend").cloneNode(true));
-        doc.body.appendChild(panel);
+        footer.appendChild(panel);
         const speciesScript = doc.createElement("script");
         speciesScript.textContent = `(() => {
           const points = ${JSON.stringify(payload.species).replace(/</g, "\\u003c")};
@@ -3069,7 +3377,7 @@
         documentButton.setAttribute("aria-label", "Öppna dokumenttext");
         documentButton.innerHTML = '<span class="doc-icon" aria-hidden="true"></span><span class="doc-title"></span>';
         documentButton.querySelector(".doc-title").textContent = payload.document.title || "Dokumenttext";
-        doc.body.appendChild(documentButton);
+        workspace.appendChild(documentButton);
 
         const documentPreview = doc.createElement("div");
         documentPreview.className = "doc-preview";
@@ -3100,12 +3408,12 @@
       const badge = doc.createElement("div");
       badge.className = "badge";
       badge.textContent = `${payload.geotiffName || "GPS-positioner"} · ${payload.imagePhotos.length} foton`;
-      doc.body.appendChild(badge);
+      footer.appendChild(badge);
 
       const zoomControls = doc.createElement("div");
       zoomControls.className = "zoom";
-      zoomControls.innerHTML = '<button type="button" class="square" id="out">-</button><span class="value" id="value">100%</span><button type="button" class="square" id="in">+</button><button type="button" id="fit">Passa</button>';
-      doc.body.appendChild(zoomControls);
+      zoomControls.innerHTML = '<button type="button" class="square" id="out" title="Zooma ut" aria-label="Zooma ut">−</button><span class="value" id="value">100%</span><button type="button" class="square" id="in" title="Zooma in" aria-label="Zooma in">+</button><button type="button" id="fit" title="Passa in kartbilden">Passa</button>';
+      workspace.appendChild(zoomControls);
 
       const script = doc.createElement("script");
       script.textContent = [
@@ -3120,7 +3428,7 @@
         "function handlePopupButton(event){event.stopPropagation();var zoomWrap=floatingPopup.querySelector('.zoom-wrap');if(!zoomWrap)return;var action=event.currentTarget.dataset.popupZoom,scale=Number(zoomWrap.dataset.scale||1);if(action==='in')setPopupZoom(zoomWrap,scale*1.25);if(action==='out')setPopupZoom(zoomWrap,scale*.8);if(action==='reset'){setPopupZoom(zoomWrap,1);zoomWrap.scrollLeft=0;zoomWrap.scrollTop=0;}}",
         "function closeFloatingPopup(){floatingPopup.style.display='none';floatingPopup.innerHTML='';document.querySelectorAll('.marker.open').forEach(function(open){open.classList.remove('open');});}",
         "function fitPopupImageToFrame(zoomWrap){var img=zoomWrap.querySelector('img');if(!img)return;img.style.maxWidth='none';img.style.maxHeight='none';img.style.height='auto';zoomWrap.dataset.scale='1';var rect=zoomWrap.getBoundingClientRect();if(!rect.width||!rect.height||!img.naturalWidth||!img.naturalHeight)return;var baseHeight=rect.width*(img.naturalHeight/img.naturalWidth),min=clamp(Math.max(1,rect.height/baseHeight),1,5);zoomWrap.dataset.minScale=String(min);setPopupZoom(zoomWrap,min);zoomWrap.scrollLeft=Math.max(0,(img.scrollWidth-zoomWrap.clientWidth)/2);zoomWrap.scrollTop=Math.max(0,(img.scrollHeight-zoomWrap.clientHeight)/2);}",
-        "function openFloatingPopup(marker){var fullsrc=marker.dataset.fullsrc,name=marker.dataset.name,title=marker.dataset.title||'',popup=floatingPopup;popup.innerHTML='<button type=\"button\" class=\"popup-close\" title=\"Stäng\" aria-label=\"Stäng\">×</button><div class=\"zoom-wrap\" data-scale=\"1\"><img alt=\"\"></div><div class=\"popup-tools\"><button type=\"button\" data-popup-zoom=\"out\" title=\"Zooma ut\">-</button><span class=\"popup-zoom-value\">100%</span><button type=\"button\" data-popup-zoom=\"in\" title=\"Zooma in\">+</button><button type=\"button\" data-popup-zoom=\"reset\" title=\"Återställ zoom\">100%</button></div><div class=\"popup-meta\"><b></b><input class=\"photo-title\" type=\"text\" placeholder=\"Titel\" aria-label=\"Titel\"></div>';var img=popup.querySelector('.zoom-wrap img'),input=popup.querySelector('.photo-title');img.src=fullsrc;img.alt=name;popup.querySelector('b').textContent=name;input.value=title;input.addEventListener('input',function(){marker.dataset.title=input.value;});var zoomWrap=popup.querySelector('.zoom-wrap');zoomWrap.addEventListener('wheel',handlePopupWheel,{passive:false});popup.querySelector('.popup-close').addEventListener('click',function(event){event.stopPropagation();closeFloatingPopup();});popup.style.display='block';img.addEventListener('load',function(){fitPopupImageToFrame(zoomWrap);},{once:true});if(img.complete)fitPopupImageToFrame(zoomWrap);}",
+        "function openFloatingPopup(marker){var fullsrc=marker.dataset.fullsrc,name=marker.dataset.name,title=marker.dataset.title||'',popup=floatingPopup;popup.innerHTML='<button type=\"button\" class=\"popup-close\" title=\"Stäng\" aria-label=\"Stäng\">×</button><div class=\"zoom-wrap\" data-scale=\"1\"><img alt=\"\"></div><div class=\"popup-tools\"><button type=\"button\" data-popup-zoom=\"out\" title=\"Zooma ut\">-</button><span class=\"popup-zoom-value\">100%</span><button type=\"button\" data-popup-zoom=\"in\" title=\"Zooma in\">+</button><button type=\"button\" data-popup-zoom=\"reset\" title=\"Återställ zoom\">100%</button></div><div class=\"popup-meta\"><b></b><input class=\"photo-title\" type=\"text\" placeholder=\"Titel\" aria-label=\"Titel\"></div>';var img=popup.querySelector('.zoom-wrap img'),input=popup.querySelector('.photo-title');img.src=fullsrc;img.alt=name;popup.querySelector('b').textContent=name;input.value=title;input.addEventListener('input',function(){marker.dataset.title=input.value;});var zoomWrap=popup.querySelector('.zoom-wrap');zoomWrap.addEventListener('wheel',handlePopupWheel,{passive:false});popup.querySelector('.popup-close').addEventListener('click',function(event){event.stopPropagation();closeFloatingPopup();});popup.style.display='flex';img.addEventListener('load',function(){fitPopupImageToFrame(zoomWrap);},{once:true});if(img.complete)fitPopupImageToFrame(zoomWrap);}",
         "stage.addEventListener('wheel',function(event){if(event.target.closest('.floating-popup'))return;event.preventDefault();zoomAt(event.clientX,event.clientY,event.deltaY<0?1.12:.89);},{passive:false});",
         "stage.addEventListener('pointerdown',function(event){if(event.button!==0||event.target.closest('.marker')||event.target.closest('.floating-popup'))return;view.dragging=true;view.dragStartX=event.clientX;view.dragStartY=event.clientY;view.startPanX=view.panX;view.startPanY=view.panY;stage.classList.add('dragging');stage.setPointerCapture(event.pointerId);});",
         "window.addEventListener('pointermove',function(event){if(!view.dragging)return;view.panX=view.startPanX+event.clientX-view.dragStartX;view.panY=view.startPanY+event.clientY-view.dragStartY;apply();});",
@@ -3133,7 +3441,8 @@
         "if(documentClose&&documentPreview){documentClose.addEventListener('click',function(event){event.stopPropagation();documentPreview.classList.remove('open');});}",
         "document.querySelectorAll('.marker').forEach(function(marker){marker.addEventListener('click',function(event){event.stopPropagation();openFloatingPopup(marker);document.querySelectorAll('.marker.open').forEach(function(open){if(open!==marker)open.classList.remove('open');});marker.classList.add('open');});});",
         "document.addEventListener('click',function(event){if(documentPreview&&!event.target.closest('.doc-preview')&&!event.target.closest('.doc-button'))documentPreview.classList.remove('open');if(!event.target.closest('.floating-popup')&&!event.target.closest('.marker')){floatingPopup.style.display='none';document.querySelectorAll('.marker.open').forEach(function(open){open.classList.remove('open');});}});",
-        "apply();"
+        "apply();",
+        `(${mountMapLayout.toString()})(stage,surface,documentButton,document.querySelector('.zoom'));`
       ].join("");
       doc.body.appendChild(script);
 
