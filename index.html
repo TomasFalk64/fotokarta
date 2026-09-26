@@ -1139,6 +1139,20 @@
       width: 34px; height: 34px; min-width: 34px; min-height: 34px; padding: 0; border-radius: 50%; font-size: 20px; font-weight: 400; line-height: 1; flex-shrink: 0;
     }
     .species-panel { position: fixed; left: 16px; bottom: 16px; z-index: 1001; max-width: min(280px, calc(100vw - 32px)); padding: 10px; }
+    .map-text-buttons { position: absolute; z-index: 540; display: flex; gap: 8px; width: max-content; max-width: calc(100% - 24px); }
+    .map-text-buttons > button.document-map-button, .map-text-buttons > button.doc-button { position: static; box-sizing: border-box; height: var(--map-control-height); max-width: 260px; min-width: 0; }
+    .map-text-buttons > button.species-list-button { flex: 0 0 auto; grid-template-columns: 1fr; }
+    .species-text-list { list-style: none; padding: 0; margin: 0; }
+    .species-text-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto 5em; align-items: baseline; gap: 8px; padding: 1px 0; line-height: 1.35; font-size: 14px; overflow-wrap: anywhere; }
+    .species-text-list .species-count { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .species-text-list .rl-class { text-align: right; font-weight: 700; }
+    .species-text-list li[role="button"] { cursor: pointer; border-radius: 3px; padding-inline: 4px; }
+    .species-text-list li[aria-pressed="true"] { background: var(--selected); }
+    .species-text-list li:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .species-selection-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    .species-selection-status { font-size: 13px; margin: 0 0 8px; }
+    .species-marker.selection-match { outline: 3px solid #172f42; outline-offset: 3px; }
+    .species-marker.selection-muted { opacity: .2; }
     .map-workspace { position: relative; min-width: 0; width: 100%; --map-control-height: 44px; }
     .map-workspace > .stage { position: relative; box-sizing: border-box; width: 100%; }
     .map-workspace > button.document-map-button, .map-workspace > button.doc-button {
@@ -1289,10 +1303,12 @@
         </div>
         <div class="floating-popup" id="floatingPopup"></div>
       </div>
+      <div class="map-text-buttons" id="mapTextButtons">
       <button type="button" class="document-map-button" id="documentMapButton" aria-label="Öppna dokumenttext">
         <span class="document-icon" aria-hidden="true"></span>
         <span class="document-map-title" id="documentMapTitle"></span>
       </button>
+      </div>
       <div class="document-preview" id="documentPreview" role="dialog" aria-modal="false" aria-labelledby="documentPreviewTitle">
         <div class="document-preview-header">
           <h2 id="documentPreviewTitle"></h2>
@@ -1353,6 +1369,7 @@
         polygons: []
       },
       species: [],
+      speciesSelection: [],
       speciesName: "",
       speciesVisible: true,
       speciesImportVersion: 0,
@@ -1545,7 +1562,14 @@
     updateMarkerSize();
     renderDocumentUi();
 
-    mountMapLayout(els.imageStage, els.imageSurface, els.documentMapButton, document.querySelector(".zoom-controls"));
+    const speciesListUi = mountSpeciesList(document, document.getElementById("mapTextButtons"), false, speciesColor);
+    document.addEventListener("species-selection", (event) => {
+      state.speciesSelection = event.detail;
+      state.speciesVisible = true;
+      closeFloatingPopup();
+      renderSpecies();
+    });
+    mountMapLayout(els.imageStage, els.imageSurface, document.getElementById("mapTextButtons"), document.querySelector(".zoom-controls"));
 
     // Measure the untransformed map, so panning and zooming never move the controls.
     // This same function is embedded in standalone exports.
@@ -1565,7 +1589,7 @@
         const edge = 12, gap = 16;
         const available = Math.max(0, width - edge * 2);
         const mapWidth = surface.offsetWidth;
-        const documentWidth = documentButton?.classList.contains("visible") ? documentButton.offsetWidth : 0;
+        const documentWidth = (documentButton?.classList.contains("visible") || documentButton?.querySelector?.(".visible")) ? documentButton.offsetWidth : 0;
         const zoomWidth = zoomControls.offsetWidth;
         const documentHeight = documentWidth ? documentButton.offsetHeight : 0;
         const bottomSpace = footer ? footer.offsetHeight + edge + gap : 42;
@@ -2221,11 +2245,147 @@
     function speciesCategory(value) {
       const text = String(value ?? "").trim().toUpperCase();
       const code = text.match(/\b(RE|CR|EN|VU|NT|DD|LC|NE|NA)\b/);
-      return code ? code[1] : text || "Ej angivet";
+      return code ? code[1] : (!text || text === "EJ ANGIVET" ? "LC" : text);
     }
 
     function speciesColor(category) {
-      return ({ RE: "#171717", CR: "#a50026", EN: "#e34a33", VU: "#f99020", NT: "#d4b400", DD: "#8064a2", LC: "#238b45", NE: "#64748b", NA: "#64748b" })[category] || "#64748b";
+      if (!category || category === "Ej angivet") category = "LC";
+      return ({ RE: "#171717", CR: "#ff0000", EN: "#8000ff", VU: "#ffa500", NT: "#33b5ff", DD: "#3366ff", LC: "#00b050", NE: "#64748b", NA: "#64748b" })[category] || "#64748b";
+    }
+
+    // Shared list UI for the editor and the standalone map. Names are inserted as text.
+    function mountSpeciesList(doc, toolbar, exported, colorFor) {
+      const selected = new Set();
+      let previousPoints;
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.id = "speciesListButton";
+      button.className = `${exported ? "doc-button" : "document-map-button"} species-list-button`;
+      button.textContent = "Artlista";
+      button.setAttribute("aria-expanded", "false");
+      button.setAttribute("aria-controls", "speciesListPreview");
+      toolbar.appendChild(button);
+      const preview = doc.createElement("div");
+      preview.id = "speciesListPreview";
+      preview.className = exported ? "doc-preview" : "document-preview";
+      preview.setAttribute("role", "dialog");
+      preview.setAttribute("aria-labelledby", "speciesListTitle");
+      const header = doc.createElement("div");
+      header.className = exported ? "doc-preview-header" : "document-preview-header";
+      const title = doc.createElement("h2");
+      title.id = "speciesListTitle";
+      const close = doc.createElement("button");
+      close.type = "button";
+      close.className = exported ? "doc-close" : "document-close";
+      close.textContent = "×";
+      close.setAttribute("aria-label", "Stäng artlistan");
+      header.append(title, close);
+      const content = doc.createElement("div");
+      content.className = exported ? "doc-content" : "document-preview-content";
+      const actions = doc.createElement("div");
+      actions.className = "species-selection-actions";
+      const apply = doc.createElement("button");
+      apply.type = "button";
+      apply.id = "speciesSelectionApply";
+      const reset = doc.createElement("button");
+      reset.type = "button";
+      reset.id = "speciesSelectionReset";
+      reset.textContent = "Återställ";
+      const status = doc.createElement("p");
+      status.className = "species-selection-status";
+      status.setAttribute("role", "status");
+      actions.append(apply, reset);
+      function updateSelection() {
+        apply.textContent = `Visa urval (${selected.size})`;
+        apply.disabled = !selected.size;
+        content.querySelectorAll("li[data-species-key]").forEach(row => {
+          row.setAttribute("aria-pressed", String(selected.has(row.dataset.speciesKey)));
+        });
+      }
+      function showSelection() {
+        doc.dispatchEvent(new doc.defaultView.CustomEvent("species-selection", { detail: [...selected] }));
+        status.textContent = selected.size
+          ? (doc.querySelector(".species-marker.selection-match") ? `${selected.size} arter framhävs i kartan.` : "Inga fynd inom kartbilden för urvalet.")
+          : "Alla artpunkter visas normalt.";
+      }
+      apply.addEventListener("click", showSelection);
+      reset.addEventListener("click", () => { selected.clear(); updateSelection(); showSelection(); });
+      preview.append(header, content);
+      doc.body.appendChild(preview);
+      function hide() {
+        preview.classList.remove("open");
+        button.setAttribute("aria-expanded", "false");
+      }
+      button.addEventListener("click", () => {
+        const open = !preview.classList.contains("open");
+        preview.classList.toggle("open", open);
+        button.setAttribute("aria-expanded", String(open));
+        if (open) close.focus();
+      });
+      close.addEventListener("click", () => { hide(); button.focus(); });
+      doc.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && preview.classList.contains("open")) { hide(); button.focus(); }
+      });
+      doc.addEventListener("click", (event) => {
+        if (!preview.contains(event.target) && !button.contains(event.target)) hide();
+      });
+      return function update(points) {
+        if (points !== previousPoints) {
+          selected.clear();
+          status.textContent = "";
+          previousPoints = points;
+        }
+        const order = ["CR", "EN", "VU", "NT", "DD", "LC"];
+        const rank = category => { const index = order.indexOf(category); return index < 0 ? order.length : index; };
+        const compare = (a, b) => rank(a.category) - rank(b.category) || a.name.localeCompare(b.name, "sv", { sensitivity: "base" }) || (a.scientific || "").localeCompare(b.scientific || "", "sv");
+        const unique = new Map();
+        points.map(point => ({ ...point, category: !point.category || point.category === "Ej angivet" ? "LC" : point.category })).sort(compare).forEach(point => {
+          const key = (point.scientific || point.name).trim().toLocaleLowerCase("sv");
+          if (!unique.has(key)) unique.set(key, { point, count: 0 });
+          unique.get(key).count++;
+        });
+        const list = doc.createElement("ul");
+        list.className = "species-text-list";
+        unique.forEach(({ point, count }, key) => {
+          const row = doc.createElement("li");
+          row.dataset.speciesKey = key;
+          row.tabIndex = 0;
+          row.setAttribute("role", "button");
+          const select = () => {
+            if (selected.has(key)) selected.delete(key); else selected.add(key);
+            updateSelection();
+            status.textContent = "Tryck på Visa urval för att uppdatera kartan.";
+          };
+          row.addEventListener("click", select);
+          row.addEventListener("keydown", event => {
+            if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(); }
+          });
+          const category = doc.createElement("span");
+          category.className = "rl-class";
+          category.textContent = point.category;
+          category.style.color = colorFor(point.category);
+          const name = doc.createElement("span");
+          name.className = "species-name";
+          const scientific = (point.scientific || "").trim();
+          name.textContent = scientific && point.name === scientific ? "" : point.name;
+          if (scientific) {
+            const scientificName = doc.createElement("i");
+            scientificName.textContent = scientific;
+            if (name.textContent) name.appendChild(doc.createTextNode(" "));
+            name.appendChild(scientificName);
+          }
+          const amount = doc.createElement("span");
+          amount.className = "species-count";
+          amount.textContent = `${count} fynd`;
+          row.append(name, amount, category);
+          list.appendChild(row);
+        });
+        content.replaceChildren(actions, status, list);
+        updateSelection();
+        title.textContent = `Importerade arter (${unique.size})`;
+        button.classList.toggle("visible", unique.size > 0);
+        if (!unique.size) hide();
+      };
     }
 
     function parseSpeciesRows(rows, date1904 = false) {
@@ -2287,6 +2447,7 @@
         if (!result) throw new Error("Hittar inget blad med kolumnen Artnamn.");
         if (!result.points.length) throw new Error(`Inga giltiga artfynd. ${result.skipped.slice(0, 3).join("; ")}`);
         state.species = result.points;
+        state.speciesSelection = [];
         state.speciesName = file.name;
         state.speciesVisible = true;
         closeFloatingPopup();
@@ -2311,7 +2472,7 @@
     }
 
     // Shared by the editor and the exported, offline HTML map.
-    function mountSpecies(doc, overlay, popup, points, aspect, visible, colorFor, size = 22) {
+    function mountSpecies(doc, overlay, popup, points, aspect, visible, colorFor, size = 22, selection = []) {
       size = Math.max(8, Math.min(48, Number(size) || 22));
       overlay.querySelectorAll(".species-marker").forEach((node) => node.remove());
       if (!visible) return;
@@ -2327,8 +2488,12 @@
         const point = group[0], marker = doc.createElement("button");
         marker.type = "button";
         marker.className = "species-marker";
+        const matched = selection.length > 0 && group.some(item => selection.includes((item.scientific || item.name || "").trim().toLocaleLowerCase("sv")));
+        marker.classList.toggle("selection-match", matched);
+        marker.classList.toggle("selection-muted", selection.length > 0 && !matched);
         Object.assign(marker.style, { position: "absolute", left: `${point.displayLon / aspect * 100}%`, top: `${(1 - point.displayLat) * 100}%`, width: "22px", height: "22px", minWidth: "22px", minHeight: "22px", padding: "0", border: "2px solid white", borderRadius: "50%", boxShadow: "0 0 0 1px #333", transform: "translate(-50%,-50%)", background: colorFor(point.category), color: "#fff", textShadow: "0 1px 2px black", fontSize: "12px", zIndex: String(2 + priority(point.category)), pointerEvents: "auto", cursor: "pointer" });
         marker.textContent = group.length > 1 ? String(group.length) : "";
+        if (matched) marker.style.zIndex = "20";
         Object.assign(marker.style, { width: `${size}px`, height: `${size}px`, minWidth: `${size}px`, minHeight: `${size}px`, fontSize: `${Math.max(8, Math.round(size * 0.55))}px` });
         marker.title = group.map((item) => `${item.name} (${item.category})`).join(", ");
         marker.setAttribute("aria-label", marker.title);
@@ -2372,8 +2537,9 @@
     }
 
     function renderSpecies() {
+      speciesListUi(state.species);
       const points = computeSpeciesPositions();
-      mountSpecies(document, els.imageOverlay, els.floatingPopup, points, getDisplayAspect(), state.speciesVisible, speciesColor, document.getElementById("speciesSize").value);
+      mountSpecies(document, els.imageOverlay, els.floatingPopup, points, getDisplayAspect(), state.speciesVisible, speciesColor, document.getElementById("speciesSize").value, state.speciesSelection);
       const toggle = document.getElementById("speciesToggle");
       toggle.disabled = !state.species.length;
       toggle.textContent = state.speciesVisible ? "Dölj artpunkter" : "Visa artpunkter";
@@ -3083,6 +3249,7 @@
       state.photos = [];
       state.speciesImportVersion++;
       state.species = [];
+      state.speciesSelection = [];
       state.speciesName = "";
       state.speciesVisible = true;
       document.getElementById("speciesInput").value = "";
@@ -3116,7 +3283,7 @@
     async function downloadStandaloneHtml() {
       const imagePhotos = computeDisplayPositions(state.photos);
       const geojsonPaths = computeGeoJsonPaths();
-      const downloadName = buildDownloadFileName(state.geotiffName);
+      const downloadName = buildDownloadFileName(state.geotiffName, state.document.title);
       const payload = {
         exportedAt: new Date().toISOString(),
         pageTitle: downloadName,
@@ -3127,6 +3294,7 @@
         geojsonName: state.geojson.name,
         geojsonPaths,
         species: computeSpeciesPositions(),
+        speciesList: state.species,
         speciesVisible: state.speciesVisible,
         speciesSize: Number(document.getElementById("speciesSize").value),
         document: hasDocumentText() ? {
@@ -3240,8 +3408,9 @@
       return `Fotokarta_${baseName}.xlsx`;
     }
 
-    function buildDownloadFileName(geotiffName) {
-      const baseName = getBaseFileName(geotiffName || "karta");
+    function buildDownloadFileName(geotiffName, documentTitle = "") {
+      const title = String(documentTitle || "").trim().replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").replace(/[. ]+$/, "");
+      const baseName = title || getBaseFileName(geotiffName || "karta");
       return `Fotokarta_${baseName}.html`;
     }
 
@@ -3378,14 +3547,16 @@
           const colorFor = ${speciesColor.toString()};
           const mount = ${mountSpecies.toString()};
           let visible = ${payload.speciesVisible !== false};
+          let selection = [];
           const toggle = document.getElementById("speciesToggle");
           const popup = document.getElementById("floatingPopup");
           function render() {
-            mount(document, document.querySelector(".overlay"), popup, points, ${Number(payload.imageAspect) || 1.35}, visible, colorFor, ${Number(payload.speciesSize) || 22});
+            mount(document, document.querySelector(".overlay"), popup, points, ${Number(payload.imageAspect) || 1.35}, visible, colorFor, ${Number(payload.speciesSize) || 22}, selection);
             toggle.textContent = visible ? "Dölj artpunkter" : "Visa artpunkter";
             toggle.setAttribute("aria-pressed", String(visible));
           }
           toggle.addEventListener("click", () => { visible = !visible; popup.style.display = "none"; render(); });
+          document.addEventListener("species-selection", event => { selection = event.detail; visible = true; popup.style.display = "none"; render(); });
           render();
         })();`;
         doc.body.appendChild(speciesScript);
@@ -3411,6 +3582,16 @@
         documentPreview.querySelector(".doc-content").innerHTML = sanitizeDocumentHtml(payload.document.html);
         doc.body.appendChild(documentPreview);
       }
+
+      const textButtons = doc.createElement("div");
+      textButtons.className = "map-text-buttons";
+      textButtons.id = "mapTextButtons";
+      const existingDocumentButton = doc.getElementById("documentButton");
+      if (existingDocumentButton) textButtons.appendChild(existingDocumentButton);
+      workspace.appendChild(textButtons);
+      const listScript = doc.createElement("script");
+      listScript.textContent = `(${mountSpeciesList.toString()})(document, document.getElementById("mapTextButtons"), true, ${speciesColor.toString()})(${JSON.stringify(payload.speciesList || payload.species || []).replace(/</g, "\\u003c")});`;
+      doc.body.appendChild(listScript);
 
       const aspect = payload.imageAspect || 1;
       payload.imagePhotos.forEach((photo) => {
@@ -3464,7 +3645,7 @@
         "document.querySelectorAll('.marker').forEach(function(marker){marker.addEventListener('click',function(event){event.stopPropagation();openFloatingPopup(marker);document.querySelectorAll('.marker.open').forEach(function(open){if(open!==marker)open.classList.remove('open');});marker.classList.add('open');});});",
         "document.addEventListener('click',function(event){if(documentPreview&&!event.target.closest('.doc-preview')&&!event.target.closest('.doc-button'))documentPreview.classList.remove('open');if(!event.target.closest('.floating-popup')&&!event.target.closest('.marker')){floatingPopup.style.display='none';document.querySelectorAll('.marker.open').forEach(function(open){open.classList.remove('open');});}});",
         "apply();",
-        `(${mountMapLayout.toString()})(stage,surface,documentButton,document.querySelector('.zoom'));`
+        `(${mountMapLayout.toString()})(stage,surface,document.getElementById('mapTextButtons'),document.querySelector('.zoom'));`
       ].join("");
       doc.body.appendChild(script);
 
