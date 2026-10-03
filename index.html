@@ -3329,22 +3329,23 @@
 
       const headers = [
         "Artnamn",
-        "Antal",
-        "Enhet",
         "Lokalnamn",
-        "lat",
-        "lon",
-        "Ost",
-        "Nord",
-        "Noggrannhet",
         "Startdatum",
         "Starttid",
+        "Ost",
+        "Nord",
+        "lat",
+        "lon",
+        "Noggrannhet",
         "Publik kommentar",
+        "Privat kommentar",
+        "Biotop-beskrivning",
         "Biotop",
+        "Antal",
+        "Enhet",
         "Art som substrat",
-        "Substrat",
-        "Substrat-beskrivning",
         "Aktivitet",
+        "Substrat",
         "Ålder-Stadium",
         "Kön"
       ];
@@ -3352,30 +3353,39 @@
       const localName = state.geotiffName ? getBaseFileName(state.geotiffName) : "";
       const rows = [...state.photos].sort(comparePhotosByDateTime).map((photo) => {
         const [east, north] = getSweref99Position(photo);
+        const timeMatch = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(photo.startTime || "");
+        const startTime = timeMatch && Number(timeMatch[1]) < 24 && Number(timeMatch[2]) < 60
+          ? (Number(timeMatch[1]) * 60 + Number(timeMatch[2])) / 1440
+          : "";
         return {
           "Artnamn": photo.title || "",
-          "Antal": "",
-          "Enhet": "",
           "Lokalnamn": localName,
-          "lat": roundCoordinate(photo.lat),
-          "lon": roundCoordinate(photo.lon),
+          "Startdatum": photo.startDate || "",
+          "Starttid": startTime,
           "Ost": Number.isFinite(east) ? Math.round(east) : "",
           "Nord": Number.isFinite(north) ? Math.round(north) : "",
+          "lat": roundCoordinate(photo.lat),
+          "lon": roundCoordinate(photo.lon),
           "Noggrannhet": Number.isFinite(photo.accuracy) ? photo.accuracy : "",
-          "Startdatum": photo.startDate || "",
-          "Starttid": photo.startTime || "",
           "Publik kommentar": "",
+          "Privat kommentar": "",
+          "Biotop-beskrivning": "",
           "Biotop": "",
+          "Antal": "",
+          "Enhet": "",
           "Art som substrat": "",
-          "Substrat": "",
-          "Substrat-beskrivning": "",
           "Aktivitet": "",
+          "Substrat": "",
           "Ålder-Stadium": "",
           "Kön": ""
         };
       });
 
       const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+      rows.forEach((row, index) => {
+        const cell = worksheet[XLSX.utils.encode_cell({ r: index + 1, c: headers.indexOf("Starttid") })];
+        if (cell && cell.t === "n") cell.z = "hh:mm";
+      });
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Observationer");
       worksheet["!cols"] = headers.map((header) => ({ wch: Math.max(12, header.length + 2) }));
