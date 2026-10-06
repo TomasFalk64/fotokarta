@@ -9,6 +9,7 @@ Fotokarta är en webbsida som skapar interaktiva kartor med GPS-märkta foton, a
 3. Välj GPS-märkta bilder, importera artfynd från Excel och/eller läs in polygoner från GeoJSON.
 4. Bifoga dokumenttext och justera storleken på fotomarkörer och artpunkter.
 5. Välj **Ladda ner HTML** för att spara kartan eller **Ladda ner Excel** för att exportera fotouppgifter.
+6. För att fortsätta senare: öppna generatorn och välj **Importera fotokarta**, till höger om **Rensa**, och välj den sparade HTML-filen.
 
 Webbsidan hämtar JavaScript-bibliotek från externa CDN-tjänster och behöver därför internet vid laddning. Filerna som du väljer bearbetas lokalt i webbläsaren; appen har ingen server för uppladdning eller lagring av dessa filer. Arbetet sparas inte automatiskt mellan omladdningar.
 
@@ -75,7 +76,7 @@ Följande fem kolumner måste finnas, även om vissa celler får vara tomma:
 | `ID` | Artportalens fynd-ID, endast siffror. Krävs för fyndlänken. |
 | `Artnamn` | Svenskt eller annat visningsnamn. Minst detta fält eller `Vetenskapligt namn` måste vara ifyllt. |
 | `Vetenskapligt namn` | Vetenskapligt namn. Används också som visningsnamn om `Artnamn` är tomt. |
-| `Rödlistade` | Exempelvis DD, NT, VU, EN, CR, RE eller LC. Tomt värde visas som ”Ej angivet”. Även rubriken `Rödlistad` accepteras. |
+| `Rödlistade` | Exempelvis DD, NT, VU, EN, CR, RE eller LC. Tomt värde visas som ”-”, med samma gröna färg och kartprioritet som LC. Även rubriken `Rödlistad` accepteras. |
 | `Startdatum` | Text, helst `ÅÅÅÅ-MM-DD`, eller ett Excel-datum. Tomt värde visas som ”Ej angivet”. |
 
 Dessutom krävs ett komplett koordinatpar:
@@ -133,6 +134,12 @@ Importera `.txt` eller `.md`, skriv i dokumentrutan eller klistra in text från 
 Filen innehåller kartbild, exporterade foton och titlar, polygoner, dokumenttext och artfynd inom kartan. Bilder och visningskod bäddas in, så kartan kan öppnas lokalt utan appens externa bibliotek. Länkar till Artportalen och andra externa webbplatser kräver internet.
 
 Panorering, zoomning, klickbara foton och artfynd samt visa/dölj-knappen för artpunkter finns kvar. Fotomarkörernas storlek, artpunkternas storlek och artlagrets synlighet följer med. Filen är en visningskarta; den har inte redigeringssidans importfunktioner.
+
+HTML-filen innehåller också projektdata med `projectVersion: 1`. **Importera fotokarta** återställer kartbilden, foton och titlar, artfynd, polygoner, dokumenttext, inställningar samt sparad zoom och panorering i generatorn. Kartans geografiska referens sparas så att nya geografiska objekt kan placeras och kartunderlaget kan bytas. En lyckad import ersätter det aktuella arbetet; exportera först om du vill behålla det.
+
+Originalbilder och original-GeoTIFF sparas inte. Foton återställs i den exporterade upplösningen och komprimeras inte igen vid återexport. Bilderna återanvänds från visningskartan utan dubbla bildkopior i projektinformationen. Foton och artfynd utanför kartans utbredning samt polygoner helt utanför utelämnas. Polygoner som överlappar kartan behålls. Zoom och panorering avgör inte vilka objekt som sparas. Dolda artpunkter inom kartan finns kvar tillsammans med synlighetsinställningen.
+
+Äldre exporter utan projektdata känns igen och visar ett meddelande om begränsad redigerbarhet. De kan inte återställas i generatorn och det aktuella arbetet lämnas orört; filen kan fortfarande öppnas direkt som visningskarta. Okända projektversioner och felaktiga filer avvisas också utan att ersätta arbetet. Skript i importerade filer körs inte.
 
 ### Excel med fotouppgifter
 

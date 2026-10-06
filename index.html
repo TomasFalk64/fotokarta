@@ -1291,6 +1291,8 @@
         <button id="downloadBtn" disabled>Ladda ner HTML</button>
         <button id="downloadExcelBtn" disabled>Ladda ner Excel</button>
         <button class="secondary" id="resetBtn">Rensa</button>
+        <button class="secondary" id="importMapBtn">Importera fotokarta</button>
+        <input class="native-file" type="file" id="importMapInput" accept=".html,.htm,text/html">
       </div>
     </aside>
 
@@ -1353,6 +1355,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script>
     const MAX_POPUP_IMAGE_SIDE = 1200;
+    const PROJECT_VERSION = 1;
 
     const state = {
       geotiff: null,
@@ -1504,6 +1507,12 @@
     els.downloadBtn.addEventListener("click", downloadStandaloneHtml);
     els.downloadExcelBtn.addEventListener("click", downloadExcel);
     els.resetBtn.addEventListener("click", resetAll);
+    document.getElementById("importMapBtn").addEventListener("click", () => document.getElementById("importMapInput").click());
+    document.getElementById("importMapInput").addEventListener("change", async (event) => {
+      const file = event.target.files[0];
+      if (file) await importPhotoMap(file);
+      event.target.value = "";
+    });
     els.documentEditBtn.addEventListener("click", openDocumentEditor);
     els.documentSaveBtn.addEventListener("click", saveDocumentEditor);
     els.documentCancelBtn.addEventListener("click", closeDocumentEditor);
@@ -1661,10 +1670,10 @@
     function updateFileLabels() {
       const geotiffFile = els.geotiffInput.files && els.geotiffInput.files[0];
       const imageCount = els.imageInput.files ? els.imageInput.files.length : 0;
-      els.geotiffFileName.textContent = geotiffFile ? geotiffFile.name : "Ingen fil vald";
+      els.geotiffFileName.textContent = geotiffFile ? geotiffFile.name : state.geotiffName || "Ingen fil vald";
       els.imageFileName.textContent = imageCount
         ? `${imageCount} fil${imageCount === 1 ? "" : "er"} valda`
-        : "Inga filer valda";
+        : state.photos.length ? `${state.photos.length} bilder` : "Inga filer valda";
     }
 
     function verifyLibraries() {
@@ -2245,12 +2254,12 @@
     function speciesCategory(value) {
       const text = String(value ?? "").trim().toUpperCase();
       const code = text.match(/\b(RE|CR|EN|VU|NT|DD|LC|NE|NA)\b/);
-      return code ? code[1] : (!text || text === "EJ ANGIVET" ? "LC" : text);
+      return code ? code[1] : (!text || text === "EJ ANGIVET" ? "-" : text);
     }
 
     function speciesColor(category) {
-      if (!category || category === "Ej angivet") category = "LC";
-      return ({ RE: "#171717", CR: "#ff0000", EN: "#8000ff", VU: "#ffa500", NT: "#33b5ff", DD: "#3366ff", LC: "#00b050", NE: "#64748b", NA: "#64748b" })[category] || "#64748b";
+      if (!category || category === "Ej angivet") category = "-";
+      return ({ RE: "#171717", CR: "#ff0000", EN: "#8000ff", VU: "#ffa500", NT: "#33b5ff", DD: "#3366ff", LC: "#00b050", "-": "#00b050", NE: "#64748b", NA: "#64748b" })[category] || "#64748b";
     }
 
     // Shared list UI for the editor and the standalone map. Names are inserted as text.
@@ -2329,17 +2338,21 @@
       doc.addEventListener("click", (event) => {
         if (!preview.contains(event.target) && !button.contains(event.target)) hide();
       });
-      return function update(points) {
+      return function update(points, restoredSelection) {
         if (points !== previousPoints) {
           selected.clear();
           status.textContent = "";
           previousPoints = points;
         }
+        if (restoredSelection) {
+          selected.clear();
+          restoredSelection.forEach(key => selected.add(key));
+        }
         const order = ["CR", "EN", "VU", "NT", "DD", "LC"];
         const rank = category => { const index = order.indexOf(category); return index < 0 ? order.length : index; };
         const compare = (a, b) => rank(a.category) - rank(b.category) || a.name.localeCompare(b.name, "sv", { sensitivity: "base" }) || (a.scientific || "").localeCompare(b.scientific || "", "sv");
         const unique = new Map();
-        points.map(point => ({ ...point, category: !point.category || point.category === "Ej angivet" ? "LC" : point.category })).sort(compare).forEach(point => {
+        points.map(point => ({ ...point, category: !point.category || point.category === "Ej angivet" ? "-" : point.category })).sort(compare).forEach(point => {
           const key = (point.scientific || point.name).trim().toLocaleLowerCase("sv");
           if (!unique.has(key)) unique.set(key, { point, count: 0 });
           unique.get(key).count++;
@@ -2537,7 +2550,7 @@
     }
 
     function renderSpecies() {
-      speciesListUi(state.species);
+      speciesListUi(state.species, state.speciesSelection);
       const points = computeSpeciesPositions();
       mountSpecies(document, els.imageOverlay, els.floatingPopup, points, getDisplayAspect(), state.speciesVisible, speciesColor, document.getElementById("speciesSize").value, state.speciesSelection);
       const toggle = document.getElementById("speciesToggle");
@@ -3173,8 +3186,8 @@
 
     function photoToImagePoint(photo, photoBounds = null) {
       if (!state.geotiff) return photoToFallbackPoint(photo, photoBounds);
-      if (!window.proj4) return null;
       const projection = state.geotiff.projection || 4326;
+      if (Number(projection) !== 4326 && !window.proj4) return null;
       let projected;
       try {
         projected = Number(projection) === 4326
@@ -3239,6 +3252,8 @@
     }
 
     function resetAll() {
+      closeDocumentEditor();
+      closeDocumentPreview();
       state.geotiff = null;
       state.geotiffArrayBuffer = null;
       state.geotiffName = "";
@@ -3277,7 +3292,128 @@
       els.log.innerHTML = "";
       updateUi();
       renderSpecies();
+      resetView();
       addLog("Allt rensat.", "good");
+    }
+
+    // Images remain in the standalone DOM; the project stores only their metadata.
+    function buildProject(imagePhotos, species) {
+      const georeference = state.geotiff ? Object.fromEntries(
+        ["width", "height", "xmin", "xmax", "ymin", "ymax", "projection"].map((key) => [key, state.geotiff[key]])
+      ) : null;
+      return {
+        format: "fotokarta", projectVersion: PROJECT_VERSION,
+        georeference, geotiffName: state.geotiffName, photoBoxAspect: getDisplayAspect(),
+        photos: imagePhotos.map(({ src, thumb, fullSrc, originalWidth, originalHeight, ...photo }) => photo),
+        species, speciesName: state.speciesName, speciesVisible: state.speciesVisible,
+        speciesSelection: state.speciesSelection,
+        geojson: { name: state.geojson.name, polygons: state.geojson.polygons.filter((polygon) =>
+          !state.geotiff || isGeoJsonPolygonInsideDisplay(polygon, null)) },
+        markerSize: Number(els.thumbSize.value), quality: Number(els.quality.value),
+        speciesSize: Number(document.getElementById("speciesSize").value),
+        view: { zoom: state.view.zoom, panX: state.view.panX, panY: state.view.panY }
+      };
+    }
+
+    async function importPhotoMap(file) {
+      try {
+        // Parse inertly. Never execute scripts from an imported HTML file.
+        const doc = new DOMParser().parseFromString(await file.text(), "text/html");
+        const data = doc.getElementById("fotokarta-project");
+        if (!data) {
+          if (!doc.querySelector(".stage .surface") || !doc.querySelector(".zoom #fit")) {
+            throw new Error("Filen är inte en exporterad fotokarta.");
+          }
+          const message = "Fotokartan är skapad med en äldre version och kan inte redigeras fullt ut. Den saknar projektdata och kan inte återställas i generatorn. Öppna HTML-filen direkt för att visa kartan.";
+          addLog(message, "warn");
+          window.alert(message);
+          return;
+        }
+        const project = JSON.parse(data.textContent);
+        if (project.format !== "fotokarta") throw new Error("Ogiltigt projektformat.");
+        if (project.projectVersion !== PROJECT_VERSION) {
+          throw new Error("Projektversionen stöds inte. Öppna filen i en uppdaterad fotokartgenerator.");
+        }
+        const finite = (value) => typeof value === "number" && Number.isFinite(value);
+        const imageSource = (value) => {
+          if (typeof value !== "string" || !/^data:image\/(png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(value)) {
+            throw new Error("En inbäddad bild saknas eller har ett ogiltigt format.");
+          }
+          return value;
+        };
+        const geo = project.georeference;
+        if (geo && (![geo.width, geo.height, geo.xmin, geo.xmax, geo.ymin, geo.ymax].every(finite)
+          || geo.width <= 0 || geo.height <= 0 || geo.xmax <= geo.xmin || geo.ymax <= geo.ymin)) {
+          throw new Error("Kartans geografiska information är ogiltig.");
+        }
+        if (geo && Number(geo.projection || 4326) !== 4326) {
+          if (!window.proj4) throw new Error("Proj4 saknas. Kontrollera internetanslutningen och försök igen.");
+          proj4("EPSG:4326", `EPSG:${geo.projection}`, [15, 60]);
+        }
+        if (!Array.isArray(project.photos) || !Array.isArray(project.species)
+          || !Array.isArray(project.geojson?.polygons)
+          || !finite(project.photoBoxAspect) || project.photoBoxAspect <= 0
+          || ![project.view?.zoom, project.view?.panX, project.view?.panY].every(finite)
+          || project.view.zoom < 0.5 || project.view.zoom > 6
+          || ![project.markerSize, project.quality, project.speciesSize].every(finite)) {
+          throw new Error("Projektinformationen är ofullständig.");
+        }
+        const markers = [...doc.querySelectorAll(".surface .marker")];
+        if (markers.length !== project.photos.length) throw new Error("Projektets bilder saknas.");
+        const photos = project.photos.map((photo, index) => {
+          if (!isValidCoordinate(photo.lat, photo.lon) || !finite(photo.width) || !finite(photo.height)) {
+            throw new Error("En bild har ogiltig position eller storlek.");
+          }
+          const marker = markers[index];
+          const src = imageSource(marker.dataset.fullsrc);
+          return { ...photo, name: String(photo.name || ""), title: String(marker.dataset.title || ""),
+            src, fullSrc: src, thumb: imageSource(marker.querySelector("img")?.getAttribute("src")),
+            originalWidth: photo.width, originalHeight: photo.height };
+        });
+        if (!Array.isArray(project.speciesSelection) || project.speciesSelection.some(key => typeof key !== "string")
+          || project.species.some((point) => !finite(point.lat) || !finite(point.lon)
+            || Math.abs(point.lat) > 90 || Math.abs(point.lon) > 180
+            || ["id", "name", "scientific", "category", "date"].some((key) => typeof point[key] !== "string"))
+          || project.geojson.polygons.some((polygon) => !Array.isArray(polygon.rings) || polygon.rings.some((ring) =>
+            !Array.isArray(ring) || ring.length < 3 || ring.some((point) => !isGeoJsonCoordinate(point) || !isLonLatCoordinate(point))))) {
+          throw new Error("Projektet innehåller ogiltiga geografiska objekt.");
+        }
+        const mapSource = doc.querySelector(".surface > img")?.getAttribute("src");
+        const imageDataUrl = mapSource ? imageSource(mapSource) : "";
+        if (Boolean(imageDataUrl) !== Boolean(geo)) throw new Error("Kartbilden eller dess geografiska information saknas.");
+        const description = {
+          title: doc.querySelector("#documentPreview h2")?.textContent || "",
+          html: sanitizeDocumentHtml(doc.querySelector("#documentPreview .doc-content")?.innerHTML || "")
+        };
+        // All checks precede replacement so a bad file leaves the current work intact.
+        resetAll();
+        Object.assign(state, { geotiff: geo, geotiffName: String(project.geotiffName || ""),
+          imageDataUrl, photoBoxAspect: project.photoBoxAspect, photos,
+          species: project.species, speciesName: String(project.speciesName || ""),
+          speciesVisible: project.speciesVisible !== false,
+          speciesSelection: Array.isArray(project.speciesSelection) ? project.speciesSelection : [],
+          geojson: project.geojson, document: description });
+        els.thumbSize.value = project.markerSize;
+        els.quality.value = project.quality;
+        els.qualityValue.textContent = `${Math.round(Number(els.quality.value) * 100)} %`;
+        document.getElementById("speciesSize").value = project.speciesSize;
+        document.getElementById("speciesSizeValue").textContent = `${document.getElementById("speciesSize").value} px`;
+        if (imageDataUrl) {
+          els.imageMap.src = imageDataUrl;
+          els.imageMap.style.aspectRatio = `${geo.width} / ${geo.height}`;
+        }
+        els.geotiffFileName.textContent = state.geotiffName || "Ingen fil vald";
+        els.imageFileName.textContent = `${photos.length} importerade bilder`;
+        updateMarkerSize();
+        renderPhotos();
+        renderGeoJson();
+        updateUi();
+        Object.assign(state.view, { zoom: project.view.zoom, panX: project.view.panX, panY: project.view.panY });
+        applyImageTransform();
+        addLog(`Importerade ${file.name}. Du kan fortsätta redigera och exportera kartan.`, "good");
+      } catch (error) {
+        addLog(`Kunde inte importera fotokartan: ${error.message || error}`, "bad");
+      }
     }
 
     async function downloadStandaloneHtml() {
@@ -3294,7 +3430,7 @@
         geojsonName: state.geojson.name,
         geojsonPaths,
         species: computeSpeciesPositions(),
-        speciesList: state.species,
+        speciesList: computeSpeciesPositions(),
         speciesVisible: state.speciesVisible,
         speciesSize: Number(document.getElementById("speciesSize").value),
         document: hasDocumentText() ? {
@@ -3302,7 +3438,8 @@
           html: sanitizeDocumentHtml(state.document.html)
         } : null,
         imagePhotos,
-        photos: state.photos
+        photos: state.photos,
+        project: buildProject(imagePhotos, computeSpeciesPositions())
       };
 
       const html = buildStandaloneImageHtml(payload);
@@ -3557,7 +3694,7 @@
           const colorFor = ${speciesColor.toString()};
           const mount = ${mountSpecies.toString()};
           let visible = ${payload.speciesVisible !== false};
-          let selection = [];
+          let selection = ${JSON.stringify(payload.project?.speciesSelection || []).replace(/</g, "\\u003c")};
           const toggle = document.getElementById("speciesToggle");
           const popup = document.getElementById("floatingPopup");
           function render() {
@@ -3600,7 +3737,7 @@
       if (existingDocumentButton) textButtons.appendChild(existingDocumentButton);
       workspace.appendChild(textButtons);
       const listScript = doc.createElement("script");
-      listScript.textContent = `(${mountSpeciesList.toString()})(document, document.getElementById("mapTextButtons"), true, ${speciesColor.toString()})(${JSON.stringify(payload.speciesList || payload.species || []).replace(/</g, "\\u003c")});`;
+      listScript.textContent = `(${mountSpeciesList.toString()})(document, document.getElementById("mapTextButtons"), true, ${speciesColor.toString()})(${JSON.stringify(payload.speciesList || payload.species || []).replace(/</g, "\\u003c")}, ${JSON.stringify(payload.project?.speciesSelection || []).replace(/</g, "\\u003c")});`;
       doc.body.appendChild(listScript);
 
       const aspect = payload.imageAspect || 1;
@@ -3631,7 +3768,7 @@
       const script = doc.createElement("script");
       script.textContent = [
         "var stage=document.querySelector('.stage'),surface=document.querySelector('.surface'),value=document.getElementById('value'),floatingPopup=document.getElementById('floatingPopup'),documentButton=document.getElementById('documentButton'),documentPreview=document.getElementById('documentPreview'),documentClose=document.getElementById('documentClose');",
-        "var view={zoom:1,panX:0,panY:0,dragging:false,dragStartX:0,dragStartY:0,startPanX:0,startPanY:0};",
+        `var view=Object.assign({zoom:1,panX:0,panY:0,dragging:false,dragStartX:0,dragStartY:0,startPanX:0,startPanY:0},${JSON.stringify(payload.project?.view || {})});`,
         "function clamp(v,min,max){return Math.min(max,Math.max(min,v));}",
         "function apply(){surface.style.transform='translate('+view.panX+'px, '+view.panY+'px) scale('+view.zoom+')';value.textContent=Math.round(view.zoom*100)+'%';}",
         "function zoomAt(x,y,factor){var old=view.zoom,next=clamp(old*factor,.5,6);if(next===old)return;var rect=surface.getBoundingClientRect();var baseLeft=rect.left-view.panX,baseTop=rect.top-view.panY;var localX=(x-rect.left)/old,localY=(y-rect.top)/old;view.zoom=next;view.panX=x-baseLeft-localX*next;view.panY=y-baseTop-localY*next;apply();}",
@@ -3658,6 +3795,12 @@
         `(${mountMapLayout.toString()})(stage,surface,document.getElementById('mapTextButtons'),document.querySelector('.zoom'));`
       ].join("");
       doc.body.appendChild(script);
+
+      const projectData = doc.createElement("script");
+      projectData.id = "fotokarta-project";
+      projectData.type = "application/json";
+      projectData.textContent = JSON.stringify(payload.project).replace(/</g, "\\u003c");
+      doc.body.appendChild(projectData);
 
       return "<!DOCTYPE html>\n" + doc.documentElement.outerHTML;
     }
