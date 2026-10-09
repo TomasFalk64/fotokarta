@@ -1087,6 +1087,10 @@
     }
     .check-row { color: var(--ink); }
     .actions { gap: 8px; margin-top: 12px; }
+    .edit-import-notice { margin-bottom: 16px; padding: 12px; border: 1px solid var(--accent); border-radius: 8px; background: var(--selected); }
+    .edit-import-notice p { margin: 0 0 10px; }
+    #importMapBtn.import-highlight { border: 2px solid var(--accent); background: var(--selected); }
+    .edit-map-link { font-size: 13px; padding: 4px 0; }
     #downloadBtn:not(:disabled), #downloadExcelBtn:not(:disabled), #documentSaveBtn { border-color: var(--accent); }
     #speciesToggle { margin: 6px 0 10px; }
     .hint { background: var(--panel); border-color: var(--line); box-shadow: var(--shadow); }
@@ -1153,7 +1157,33 @@
     .species-selection-status { font-size: 13px; margin: 0 0 8px; }
     .species-marker.selection-match { outline: 3px solid #172f42; outline-offset: 3px; }
     .species-marker.selection-muted { opacity: .2; }
+    .photo-workspace { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+    .photo-workspace:has(> .unplaced-photos:not([hidden])) { grid-template-columns: minmax(0, 1fr) 200px; }
+    .unplaced-photos { box-sizing: border-box; padding: 16px 12px; background: var(--panel); border-left: 1px solid var(--line); max-height: 100dvh; overflow: auto; }
+    .unplaced-photos[hidden], .photo-undo[hidden] { display: none; }
+    .unplaced-photos h2 { margin: 0 0 12px; font-size: 17px; }
+    .unplaced-list { display: grid; gap: 12px; }
+    button.unplaced-photo { display: grid; gap: 4px; width: 100%; min-width: 0; padding: 6px; text-align: left; cursor: pointer; }
+    .unplaced-photo img { display: block; width: 100%; height: 110px; object-fit: cover; border-radius: 4px; }
+    .unplaced-photo span { overflow-wrap: anywhere; }
+    .unplaced-photo small { color: var(--muted); font-weight: 400; }
+    .unplaced-photo.open { outline: 2px solid var(--accent); }
+    .floating-popup .remove-photo { flex: 0 0 auto; align-self: flex-start; margin-top: 8px; color: #873e35; }
+    .floating-popup .move-photo { flex: 0 0 auto; align-self: flex-start; margin-top: 8px; }
+    .photo-undo { position: fixed; z-index: 3000; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 48px); padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); }
+    .photo-undo span { overflow-wrap: anywhere; }
     .map-workspace { position: relative; min-width: 0; width: 100%; --map-control-height: 44px; }
+    .map-workspace > .image-stage, .map-workspace > .stage { height: 100dvh; min-height: 0; padding: 0; overflow: hidden; display: block; }
+    .map-workspace .image-surface, .map-workspace .surface { position: absolute; box-sizing: border-box; }
+    .map-workspace .image-surface > img, .map-workspace .surface > img { width: 100%; height: 100%; max-width: none; max-height: none; }
+    @media (max-width: 860px) {
+      .map-workspace.map-wrap { min-height: 0; }
+      .map-workspace > .image-stage { height: 64dvh; min-height: 320px; }
+      .photo-workspace:has(> .unplaced-photos:not([hidden])) { grid-template-columns: minmax(0, 1fr); }
+      .unplaced-photos { max-height: none; border-left: 0; border-top: 1px solid var(--line); }
+      .unplaced-list { display: flex; overflow-x: auto; padding: 4px 2px 8px; }
+      button.unplaced-photo { flex: 0 0 160px; }
+    }
     .map-workspace > .stage { position: relative; box-sizing: border-box; width: 100%; }
     .map-workspace > button.document-map-button, .map-workspace > button.doc-button {
       position: absolute; width: max-content; max-width: min(260px, calc(100% - 24px));
@@ -1197,6 +1227,10 @@
         <h1>Fotokartgenerator</h1>
         <button type="button" id="infoButton" popovertarget="appInfo" title="Om Fotokartgenerator" aria-label="Om Fotokartgenerator">i</button>
       </header>
+      <div class="edit-import-notice" id="editImportNotice" hidden>
+        <p id="editImportInstruction">Välj din nedladdade HTML-fil för att fortsätta redigera.</p>
+        <button type="button" id="editImportChooseBtn">Välj HTML-fil</button>
+      </div>
       <div class="info-popup" id="appInfo" popover role="dialog" aria-labelledby="appInfoTitle">
         <div class="info-popup-header">
           <h2 id="appInfoTitle">Om Fotokartgenerator</h2>
@@ -1227,13 +1261,13 @@
           <div class="hint">Välj en karta i geotiff-format.</div>
         </div>
         <div class="field">
-          <label class="field-heading" for="imageInput">GPS-märkta bilder</label>
+          <label class="field-heading" for="imageInput">Bilder</label>
           <div class="file-picker">
             <input class="native-file" type="file" id="imageInput" multiple accept="image/*,.zip,application/zip">
             <label class="file-button" for="imageInput">Välj fil</label>
             <span class="file-name" id="imageFileName">Inga filer valda</span>
           </div>
-          <div class="hint">Välj bilder direkt eller en ZIP-fil med bilder. Bilder utan GPS hoppas över.</div>
+          <div class="hint">Välj bilder direkt eller en ZIP-fil. Bilder utan GPS eller utanför kartområdet visas bredvid kartan.</div>
         </div>
         <div class="field range-field">
           <label for="quality">Bildkvalitet</label>
@@ -1296,6 +1330,7 @@
       </div>
     </aside>
 
+    <div class="photo-workspace">
     <section class="map-wrap map-workspace">
       <div class="image-stage" id="imageStage">
         <div class="image-surface" id="imageSurface">
@@ -1303,7 +1338,6 @@
           <svg class="geojson-overlay" id="geojsonOverlay" aria-hidden="true"></svg>
           <div class="image-overlay" id="imageOverlay"></div>
         </div>
-        <div class="floating-popup" id="floatingPopup"></div>
       </div>
       <div class="map-text-buttons" id="mapTextButtons">
       <button type="button" class="document-map-button" id="documentMapButton" aria-label="Öppna dokumenttext">
@@ -1320,13 +1354,16 @@
       </div>
       <div class="zoom-controls" aria-label="Zoomkontroller">
         <button type="button" id="zoomOutBtn" title="Zooma ut" aria-label="Zooma ut">−</button>
-        <span class="zoom-value" id="zoomValue">100%</span>
         <button type="button" id="zoomInBtn" title="Zooma in" aria-label="Zooma in">+</button>
-        <button type="button" class="fit" id="zoomResetBtn" title="Passa in kartbilden">Passa</button>
+        <button type="button" class="fit" id="zoomResetBtn" title="Visa hela kartan">Visa hela kartan</button>
       </div>
       <div class="map-badge" id="mapBadge">Välj en GeoTIFF och några GPS-märkta bilder för att börja.</div>
     </section>
+    <aside class="unplaced-photos" id="unplacedPhotos" aria-label="Övriga bilder" hidden></aside>
+    </div>
   </main>
+  <div class="floating-popup" id="floatingPopup"></div>
+  <div class="photo-undo" id="photoUndo" role="status" hidden></div>
 
   <div class="document-modal-backdrop" id="documentModal" role="dialog" aria-modal="true" aria-labelledby="documentModalTitle">
     <div class="document-modal">
@@ -1355,7 +1392,7 @@
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
   <script>
     const MAX_POPUP_IMAGE_SIDE = 1200;
-    const PROJECT_VERSION = 1;
+    const PROJECT_VERSION = 2;
 
     const state = {
       geotiff: null,
@@ -1377,6 +1414,7 @@
       speciesVisible: true,
       speciesImportVersion: 0,
       photos: [],
+      deletedPhotos: [],
       skipped: [],
       objectUrls: [],
       view: {
@@ -1430,8 +1468,7 @@
       documentPreviewClose: document.getElementById("documentPreviewClose"),
       zoomInBtn: document.getElementById("zoomInBtn"),
       zoomOutBtn: document.getElementById("zoomOutBtn"),
-      zoomResetBtn: document.getElementById("zoomResetBtn"),
-      zoomValue: document.getElementById("zoomValue")
+      zoomResetBtn: document.getElementById("zoomResetBtn")
     };
 
     defineKnownProjections();
@@ -1460,7 +1497,7 @@
     });
     els.quality.addEventListener("change", () => {
       if (state.photos.length) {
-        addLog("Ladda in bilder igen för att ändra befintliga bilder.", "warn");
+        addLog("Bildkvaliteten gäller bilder som läggs till därefter.", "good");
       }
     });
     els.zoomInBtn.addEventListener("click", () => zoomAtCenter(1.25));
@@ -1487,12 +1524,20 @@
 
     els.imageInput.addEventListener("change", async (event) => {
       const files = Array.from(event.target.files || []);
+      if (!files.length) return;
       updateFileLabels();
-      const imageFiles = await expandImageFiles(files);
-      await loadPhotos(imageFiles);
-      renderPhotos();
-      renderGeoJson();
-      updateUi();
+      els.imageInput.disabled = true;
+      try {
+        const imageFiles = await expandImageFiles(files);
+        await loadPhotos(imageFiles);
+        renderPhotos();
+        renderGeoJson();
+        updateUi();
+      } finally {
+        els.imageInput.value = "";
+        els.imageInput.disabled = false;
+        updateFileLabels();
+      }
     });
 
     els.geojsonInput.addEventListener("change", async (event) => {
@@ -1508,6 +1553,12 @@
     els.downloadExcelBtn.addEventListener("click", downloadExcel);
     els.resetBtn.addEventListener("click", resetAll);
     document.getElementById("importMapBtn").addEventListener("click", () => document.getElementById("importMapInput").click());
+    document.getElementById("editImportChooseBtn").addEventListener("click", () => document.getElementById("importMapInput").click());
+    if (new URLSearchParams(window.location.search).get("redigera") === "1") {
+      document.getElementById("editImportNotice").hidden = false;
+      document.getElementById("importMapBtn").classList.add("import-highlight");
+      document.getElementById("importMapBtn").setAttribute("aria-describedby", "editImportInstruction");
+    }
     document.getElementById("importMapInput").addEventListener("change", async (event) => {
       const file = event.target.files[0];
       if (file) await importPhotoMap(file);
@@ -1578,63 +1629,59 @@
       closeFloatingPopup();
       renderSpecies();
     });
-    mountMapLayout(els.imageStage, els.imageSurface, document.getElementById("mapTextButtons"), document.querySelector(".zoom-controls"));
+    mountMapLayout(els.imageStage, els.imageSurface, document.getElementById("mapTextButtons"), document.querySelector(".zoom-controls"), state.view, applyImageTransform);
 
     // Measure the untransformed map, so panning and zooming never move the controls.
     // This same function is embedded in standalone exports.
-    function mountMapLayout(stage, surface, documentButton, zoomControls) {
+    function mountMapLayout(stage, surface, documentButton, zoomControls, view, applyView) {
       const win = stage.ownerDocument.defaultView;
-      const footer = stage.parentElement.querySelector(".map-footer");
-      let pending = false;
+      const footer = stage.parentElement.querySelector(".map-footer, .map-badge");
+      let pending = false, previous = null;
       function place(element, left, top) {
         if (!element) return;
-        element.style.left = `${Math.round(left)}px`;
-        element.style.top = `${Math.round(top)}px`;
+        element.style.left = `${left}px`;
+        element.style.top = `${top}px`;
         element.style.right = "auto";
       }
       function layout() {
-        const width = stage.clientWidth;
-        if (!width) return;
+        const width = stage.clientWidth, height = stage.clientHeight;
+        if (!width || !height) return;
         const edge = 12, gap = 16;
-        const available = Math.max(0, width - edge * 2);
-        const mapWidth = surface.offsetWidth;
+        const available = Math.max(1, width - edge * 2);
         const documentWidth = (documentButton?.classList.contains("visible") || documentButton?.querySelector?.(".visible")) ? documentButton.offsetWidth : 0;
-        const zoomWidth = zoomControls.offsetWidth;
         const documentHeight = documentWidth ? documentButton.offsetHeight : 0;
-        const bottomSpace = footer ? footer.offsetHeight + edge + gap : 42;
-        stage.style.setProperty("--map-bottom-space", `${bottomSpace}px`);
-        const leftSpace = documentWidth ? documentWidth + gap : 0;
-        const rightSpace = zoomWidth + gap;
-        const groupWidth = leftSpace + mapWidth + rightSpace;
-        const beside = mapWidth > 0 && groupWidth <= available && width > 540;
-        let footerLeft, footerWidth;
-        if (beside) {
-          const topSpace = edge + Math.max(documentHeight, zoomControls.offsetHeight) + gap;
-          stage.style.setProperty("--map-top-space", `${topSpace}px`);
-          stage.style.padding = `${topSpace}px ${edge + rightSpace}px ${bottomSpace}px ${edge + leftSpace}px`;
-          const left = (width - groupWidth) / 2;
-          const top = Math.max(edge, surface.offsetTop - Math.max(documentHeight, zoomControls.offsetHeight) - gap);
-          place(documentButton, left, top);
-          place(zoomControls, left + leftSpace + mapWidth + gap, top);
-          footerLeft = left;
-          footerWidth = groupWidth;
-        } else {
-          const controlsWidth = documentWidth ? documentWidth + gap + zoomWidth : zoomWidth;
-          const stacked = controlsWidth > available;
-          const toolbarHeight = stacked ? documentHeight + gap + zoomControls.offsetHeight : Math.max(documentHeight, zoomControls.offsetHeight);
-          const toolbarWidth = Math.min(available, Math.max(mapWidth, stacked ? Math.max(documentWidth, zoomWidth) : controlsWidth));
-          const left = (width - toolbarWidth) / 2;
-          stage.style.setProperty("--map-top-space", `${edge + toolbarHeight + gap}px`);
-          stage.style.padding = `${edge + toolbarHeight + gap}px 42px ${bottomSpace}px`;
-          place(documentButton, left, edge);
-          place(zoomControls, left + toolbarWidth - zoomWidth, stacked ? edge + documentHeight + gap : edge);
-          footerLeft = left;
-          footerWidth = toolbarWidth;
-        }
+        const stacked = documentWidth > 0 && documentWidth + gap + zoomControls.offsetWidth > available;
+        const toolbarHeight = stacked ? documentHeight + gap + zoomControls.offsetHeight : Math.max(documentHeight, zoomControls.offsetHeight);
+        place(documentButton, edge, edge);
+        place(zoomControls, Math.max(edge, width - edge - zoomControls.offsetWidth), stacked ? edge + documentHeight + gap : edge);
         if (footer) {
-          footer.style.left = `${Math.round(footerLeft)}px`;
-          footer.style.width = `${Math.round(footerWidth)}px`;
+          footer.style.left = `${edge}px`;
+          footer.style.width = `${available}px`;
         }
+        const top = edge + toolbarHeight + gap;
+        const bottom = footer ? footer.offsetHeight + edge + gap : edge;
+        const availableHeight = Math.max(1, height - top - bottom);
+        const image = surface.querySelector("img");
+        const aspect = Number(surface.dataset.aspect) || (image?.naturalWidth / image?.naturalHeight) || 1.35;
+        const mapWidth = Math.min(available, availableHeight * aspect);
+        const mapHeight = mapWidth / aspect;
+        const left = (width - mapWidth) / 2;
+        const mapTop = top + (availableHeight - mapHeight) / 2;
+        const centerX = width / 2, centerY = top + availableHeight / 2;
+        // Preserve the map point at the viewing area's center when an enlarged or
+        // panned view is resized. In the fitted view, simply fit the new space.
+        if (previous && view && (view.zoom !== 1 || view.panX !== 0 || view.panY !== 0)) {
+          const x = (previous.centerX - previous.left - view.panX) / (previous.width * view.zoom);
+          const y = (previous.centerY - previous.top - view.panY) / (previous.height * view.zoom);
+          view.panX = centerX - left - x * mapWidth * view.zoom;
+          view.panY = centerY - mapTop - y * mapHeight * view.zoom;
+          applyView();
+        }
+        surface.style.width = `${mapWidth}px`;
+        surface.style.height = `${mapHeight}px`;
+        surface.style.left = `${left}px`;
+        surface.style.top = `${mapTop}px`;
+        previous = { width: mapWidth, height: mapHeight, left, top: mapTop, centerX, centerY };
       }
       function schedule() {
         if (pending) return;
@@ -1643,10 +1690,11 @@
       }
       if (win.ResizeObserver) {
         const observer = new win.ResizeObserver(schedule);
-        [stage, surface, documentButton, zoomControls, footer].filter(Boolean).forEach(element => observer.observe(element));
+        [stage, documentButton, zoomControls, footer].filter(Boolean).forEach(element => observer.observe(element));
       }
-      if (documentButton && win.MutationObserver) {
-        new win.MutationObserver(schedule).observe(documentButton, { attributes: true, attributeFilter: ["class"], childList: true, subtree: true, characterData: true });
+      if (win.MutationObserver) {
+        if (documentButton) new win.MutationObserver(schedule).observe(documentButton, { attributes: true, attributeFilter: ["class"], childList: true, subtree: true, characterData: true });
+        new win.MutationObserver(schedule).observe(surface, { attributes: true, attributeFilter: ["data-aspect"] });
       }
       win.addEventListener("resize", schedule);
       surface.querySelector("img")?.addEventListener("load", schedule);
@@ -1747,6 +1795,7 @@
 
     async function renderImageMap(georaster) {
       state.imageDataUrl = await georasterToImageDataUrl(georaster);
+      els.imageSurface.dataset.aspect = georaster.width / georaster.height;
       els.imageMap.src = state.imageDataUrl;
       els.imageMap.style.aspectRatio = `${georaster.width} / ${georaster.height}`;
       els.imageSurface.classList.remove("no-map");
@@ -1817,7 +1866,6 @@
 
     function applyImageTransform() {
       els.imageSurface.style.transform = `translate(${state.view.panX}px, ${state.view.panY}px) scale(${state.view.zoom})`;
-      els.zoomValue.textContent = `${Math.round(state.view.zoom * 100)}%`;
     }
 
     function hasDisplaySurface() {
@@ -1907,13 +1955,9 @@
     }
 
     async function loadPhotos(files) {
-      await cleanupPhotoUrls();
-      state.photos = [];
+      if (!files.length) return;
+      closeFloatingPopup();
       state.skipped = [];
-      if (!files.length) {
-        updateUi();
-        return;
-      }
 
       const progressLog = addLog(`Bearbetar bild 0 av ${files.length}...`, "good");
       const quality = Number(els.quality.value);
@@ -1924,25 +1968,24 @@
         updateLog(progressLog, `Bearbetar bild ${index + 1} av ${files.length}: ${file.name}`, "good");
         try {
           const gps = await readGps(file);
-          if (!gps) {
-            state.skipped.push({ name: file.name, reason: "saknar GPS" });
-            continue;
-          }
-
-
           const image = await compressImage(file, maxSize, quality);
           const thumb = await compressImage(file, thumbSize, 0.78);
           const fullSrc = URL.createObjectURL(file);
           state.objectUrls.push(fullSrc);
+          const lat = gps?.lat ?? null;
+          const lon = gps?.lon ?? null;
+          const duplicate = state.photos.some(photo => photo.name === file.name
+            && photo.lat === lat && photo.lon === lon);
           state.photos.push({
             id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${state.photos.length}`,
             name: file.name,
             title: "",
-            lat: gps.lat,
-            lon: gps.lon,
-            accuracy: gps.accuracy,
-            startDate: gps.startDate,
-            startTime: gps.startTime,
+            lat,
+            lon,
+            inOtherPhotos: duplicate,
+            accuracy: gps?.accuracy ?? "",
+            startDate: gps?.startDate || "",
+            startTime: gps?.startTime || "",
             src: image.dataUrl,
             thumb: thumb.dataUrl,
             fullSrc,
@@ -1957,7 +2000,7 @@
         }
       }
 
-      updateLog(progressLog, `Bildbearbetning klar: ${state.photos.length} placerade, ${state.skipped.length} ignorerade.`, state.photos.length ? "good" : "warn");
+      updateLog(progressLog, `Bildbearbetning klar: ${photoSummary()}${state.skipped.length ? ` ${state.skipped.length} kunde inte läsas.` : ""}`, state.skipped.length ? "warn" : "good");
     }
 
     async function expandImageFiles(files) {
@@ -2040,7 +2083,7 @@
           const accuracy = rationalToNumber(EXIF.getTag(this, "GPSHPositioningError"));
 
           if (!lat || !lon) {
-            resolve(null);
+            resolve({ lat: null, lon: null, startDate: parsedDateTime.date, startTime: parsedDateTime.time });
             return;
           }
 
@@ -2048,7 +2091,7 @@
           const longitude = dmsToDecimal(lon, lonRef);
 
           if (!isValidCoordinate(latitude, longitude)) {
-            resolve(null);
+            resolve({ lat: null, lon: null, startDate: parsedDateTime.date, startTime: parsedDateTime.time });
             return;
           }
 
@@ -2570,7 +2613,102 @@
       });
     }
 
+    function photoSummary() {
+      const placed = computeDisplayPositions(state.photos).length;
+      return `${state.photos.length} bilder inlästa: ${placed} på kartan, ${state.photos.length - placed} i Övriga bilder.`;
+    }
+
+    function getUnplacedPhotos(placed) {
+      const ids = new Set(placed.map(photo => photo.id));
+      return state.photos.filter(photo => !ids.has(photo.id)).map(photo => ({ ...photo,
+        placementReason: !isValidCoordinate(photo.lat, photo.lon) ? "Saknar GPS" : ""
+      }));
+    }
+
+    // Shared with the offline viewer. Cards are outside the zoomable map surface.
+    function renderUnplacedPhotos(doc, container, photos, openPhoto) {
+      container.replaceChildren();
+      container.hidden = !photos.length;
+      if (!photos.length) return;
+      const heading = doc.createElement("h2");
+      heading.textContent = `Övriga bilder (${photos.length})`;
+      container.appendChild(heading);
+      const list = doc.createElement("div");
+      list.className = "unplaced-list";
+      photos.forEach(photo => {
+        const card = doc.createElement("button");
+        card.type = "button";
+        card.className = "unplaced-photo";
+        card.dataset.photoId = photo.id;
+        card.dataset.name = photo.name;
+        card.dataset.title = photo.title || "";
+        card.dataset.fullsrc = photo.src;
+        const img = doc.createElement("img");
+        img.src = photo.thumb;
+        img.alt = "";
+        const name = doc.createElement("span");
+        name.textContent = photo.name;
+        card.append(img, name);
+        if (photo.placementReason) {
+          const reason = doc.createElement("small");
+          reason.textContent = photo.placementReason;
+          card.appendChild(reason);
+        }
+        if (openPhoto) card.addEventListener("click", () => openPhoto(photo, card));
+        list.appendChild(card);
+      });
+      container.appendChild(list);
+    }
+
+    function movePhoto(id, toOtherPhotos) {
+      const photo = state.photos.find(photo => photo.id === id);
+      if (!photo) return;
+      const bounds = state.geotiff ? null : computeFallbackBounds(state.photos, state.geojson.polygons);
+      if (!toOtherPhotos && !getPhotoMapPoint(photo, bounds)) return;
+      photo.inOtherPhotos = toOtherPhotos;
+      renderPhotos();
+      updateUi();
+    }
+
+    function removePhoto(id) {
+      const index = state.photos.findIndex(photo => photo.id === id);
+      if (index < 0) return;
+      const [photo] = state.photos.splice(index, 1);
+      // Keep the original object URL alive until import/reset, so undo restores it.
+      state.deletedPhotos.push({ photo, index });
+      renderPhotos();
+      renderGeoJson();
+      updateUi();
+      showPhotoUndo(document, `${photo.name} togs bort från fotokartan.`, undoRemovePhoto);
+    }
+
+    function undoRemovePhoto() {
+      const deleted = state.deletedPhotos.pop();
+      if (!deleted) return;
+      state.photos.splice(deleted.index, 0, deleted.photo);
+      renderPhotos();
+      renderGeoJson();
+      updateUi();
+      const previous = state.deletedPhotos.at(-1);
+      showPhotoUndo(document, previous ? `${previous.photo.name} togs bort från fotokartan.` : "", undoRemovePhoto);
+    }
+
+    function showPhotoUndo(doc, message, undo) {
+      const notice = doc.getElementById("photoUndo");
+      notice.replaceChildren();
+      notice.hidden = !message;
+      if (!message) return;
+      const text = doc.createElement("span");
+      text.textContent = message;
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.textContent = "Ångra";
+      button.addEventListener("click", undo);
+      notice.append(text, button);
+    }
+
     function renderPhotos() {
+      closeFloatingPopup();
       els.imageOverlay.innerHTML = "";
       const placed = computeDisplayPositions(state.photos);
       updateDisplaySurface();
@@ -2595,6 +2733,7 @@
 
         els.imageOverlay.appendChild(marker);
       });
+      renderUnplacedPhotos(document, document.getElementById("unplacedPhotos"), getUnplacedPhotos(placed), openFloatingPopup);
       renderSpecies();
     }
 
@@ -2615,6 +2754,7 @@
     }
 
     function updateDisplaySurface() {
+      els.imageSurface.dataset.aspect = getDisplayAspect();
       if (state.imageDataUrl) {
         els.imageSurface.classList.remove("no-map");
         els.imageSurface.style.removeProperty("--photo-box-aspect");
@@ -2630,6 +2770,7 @@
 
       const fallbackBounds = computeFallbackBounds(state.photos, state.geojson.polygons);
       if (fallbackBounds) state.photoBoxAspect = fallbackBounds.aspect;
+      els.imageSurface.dataset.aspect = getDisplayAspect();
       els.imageSurface.classList.add("no-map");
       els.imageSurface.style.setProperty("--photo-box-aspect", state.photoBoxAspect);
     }
@@ -2655,10 +2796,28 @@
           <b>${escapeHtml(photo.name)}</b>
           <input class="photo-title" type="text" value="${escapeHtml(photo.title || "")}" placeholder="Titel" aria-label="Titel">
         </div>
+        <button type="button" class="remove-photo">Ta bort från fotokartan</button>
       `;
       const zoomWrap = popup.querySelector(".zoom-wrap");
       const img = zoomWrap.querySelector("img");
       const titleInput = popup.querySelector(".photo-title");
+      popup.querySelector(".remove-photo").addEventListener("click", () => removePhoto(photo.id));
+      const inPanel = marker.classList.contains("unplaced-photo");
+      const move = document.createElement("button");
+      move.type = "button";
+      move.className = "move-photo";
+      move.textContent = inPanel ? "Flytta till kartan" : "Flytta till Övriga bilder";
+      const bounds = state.geotiff ? null : computeFallbackBounds(state.photos, state.geojson.polygons);
+      move.disabled = inPanel && !getPhotoMapPoint(photo, bounds);
+      if (move.disabled) {
+        const reason = document.createElement("small");
+        reason.textContent = !isValidCoordinate(photo.lat, photo.lon)
+          ? "Bilden saknar GPS och kan inte placeras på kartan."
+          : "Bildens koordinater kan inte placeras på den aktuella kartan.";
+        popup.appendChild(reason);
+      }
+      move.addEventListener("click", () => movePhoto(photo.id, !inPanel));
+      popup.insertBefore(move, popup.querySelector(".remove-photo"));
       zoomWrap.addEventListener("wheel", handlePopupWheel, { passive: false });
       titleInput.addEventListener("input", () => {
         updatePhotoTitle(photo.id, titleInput.value);
@@ -2671,7 +2830,7 @@
       popup.style.display = "flex";
       img.addEventListener("load", () => fitPopupImageToFrame(zoomWrap), { once: true });
       if (img.complete) fitPopupImageToFrame(zoomWrap);
-      els.imageOverlay.querySelectorAll(".image-photo.open").forEach((openMarker) => {
+      document.querySelectorAll(".image-photo.open, .unplaced-photo.open").forEach((openMarker) => {
         if (openMarker !== marker) openMarker.classList.remove("open");
       });
       marker.classList.add("open");
@@ -2685,7 +2844,7 @@
     function closeFloatingPopup() {
       els.floatingPopup.style.display = "none";
       els.floatingPopup.innerHTML = "";
-      els.imageOverlay.querySelectorAll(".image-photo.open").forEach((openMarker) => {
+      document.querySelectorAll(".image-photo.open, .unplaced-photo.open").forEach((openMarker) => {
         openMarker.classList.remove("open");
       });
     }
@@ -3003,6 +3162,7 @@
       if (photoBounds) state.photoBoxAspect = photoBounds.aspect;
 
       photos.forEach((photo) => {
+        if (photo.inOtherPhotos) return;
         const point = getPhotoMapPoint(photo, photoBounds);
         if (!point) return;
         const mapped = { ...photo, exactLat: point.lat, exactLon: point.lon };
@@ -3185,6 +3345,7 @@
     }
 
     function photoToImagePoint(photo, photoBounds = null) {
+      if (!isValidCoordinate(photo.lat, photo.lon)) return null;
       if (!state.geotiff) return photoToFallbackPoint(photo, photoBounds);
       const projection = state.geotiff.projection || 4326;
       if (Number(projection) !== 4326 && !window.proj4) return null;
@@ -3205,6 +3366,7 @@
 
       const xRatio = (projected[0] - xmin) / (xmax - xmin);
       const yRatio = (ymax - projected[1]) / (ymax - ymin);
+      if (!Number.isFinite(xRatio) || !Number.isFinite(yRatio)) return null;
       if (xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1) return null;
 
       const aspect = state.geotiff.width / state.geotiff.height;
@@ -3239,7 +3401,7 @@
       }
 
       const mapText = state.imageDataUrl ? `GeoTIFF: ${state.geotiffName}` : "Ingen karta vald, visar foton efter GPS-position.";
-      const photoText = state.photos.length ? `${state.photos.length} foton placerade.` : "Inga foton placerade ännu.";
+      const photoText = photoSummary();
       const documentText = hasDocumentText() ? " Dokumenttext bifogad." : "";
       const polygonText = state.geojson.polygons.length ? ` Polygon: ${state.geojson.name}.` : "";
       els.mapBadge.textContent = `${mapText} ${photoText}${documentText}${polygonText}`;
@@ -3252,6 +3414,10 @@
     }
 
     function resetAll() {
+      state.deletedPhotos = [];
+      document.getElementById("photoUndo").hidden = true;
+      document.getElementById("unplacedPhotos").replaceChildren();
+      document.getElementById("unplacedPhotos").hidden = true;
       closeDocumentEditor();
       closeDocumentPreview();
       state.geotiff = null;
@@ -3297,14 +3463,14 @@
     }
 
     // Images remain in the standalone DOM; the project stores only their metadata.
-    function buildProject(imagePhotos, species) {
+    function buildProject(species) {
       const georeference = state.geotiff ? Object.fromEntries(
         ["width", "height", "xmin", "xmax", "ymin", "ymax", "projection"].map((key) => [key, state.geotiff[key]])
       ) : null;
       return {
         format: "fotokarta", projectVersion: PROJECT_VERSION,
         georeference, geotiffName: state.geotiffName, photoBoxAspect: getDisplayAspect(),
-        photos: imagePhotos.map(({ src, thumb, fullSrc, originalWidth, originalHeight, ...photo }) => photo),
+        photos: state.photos.map(({ src, thumb, fullSrc, originalWidth, originalHeight, ...photo }) => photo),
         species, speciesName: state.speciesName, speciesVisible: state.speciesVisible,
         speciesSelection: state.speciesSelection,
         geojson: { name: state.geojson.name, polygons: state.geojson.polygons.filter((polygon) =>
@@ -3331,7 +3497,7 @@
         }
         const project = JSON.parse(data.textContent);
         if (project.format !== "fotokarta") throw new Error("Ogiltigt projektformat.");
-        if (project.projectVersion !== PROJECT_VERSION) {
+        if (![1, PROJECT_VERSION].includes(project.projectVersion)) {
           throw new Error("Projektversionen stöds inte. Öppna filen i en uppdaterad fotokartgenerator.");
         }
         const finite = (value) => typeof value === "number" && Number.isFinite(value);
@@ -3358,13 +3524,19 @@
           || ![project.markerSize, project.quality, project.speciesSize].every(finite)) {
           throw new Error("Projektinformationen är ofullständig.");
         }
-        const markers = [...doc.querySelectorAll(".surface .marker")];
+        const markers = [...doc.querySelectorAll(".surface .marker, .unplaced-photos .unplaced-photo")];
         if (markers.length !== project.photos.length) throw new Error("Projektets bilder saknas.");
+        const markersById = new Map(markers.map(marker => [marker.dataset.photoId, marker]));
+        if (project.projectVersion === 2 && (markersById.size !== markers.length
+          || new Set(project.photos.map(photo => photo.id)).size !== project.photos.length)) throw new Error("Bildernas identiteter är ogiltiga.");
         const photos = project.photos.map((photo, index) => {
-          if (!isValidCoordinate(photo.lat, photo.lon) || !finite(photo.width) || !finite(photo.height)) {
+          if (photo.inOtherPhotos !== undefined && typeof photo.inOtherPhotos !== "boolean") throw new Error("En bild har ogiltig placering.");
+          const missingGps = project.projectVersion === 2 && photo.lat === null && photo.lon === null;
+          if ((!missingGps && !isValidCoordinate(photo.lat, photo.lon)) || !finite(photo.width) || !finite(photo.height)) {
             throw new Error("En bild har ogiltig position eller storlek.");
           }
-          const marker = markers[index];
+          const marker = project.projectVersion === 1 ? markers[index] : markersById.get(photo.id);
+          if (!marker) throw new Error("En bild saknas i projektet.");
           const src = imageSource(marker.dataset.fullsrc);
           return { ...photo, name: String(photo.name || ""), title: String(marker.dataset.title || ""),
             src, fullSrc: src, thumb: imageSource(marker.querySelector("img")?.getAttribute("src")),
@@ -3411,6 +3583,9 @@
         Object.assign(state.view, { zoom: project.view.zoom, panX: project.view.panX, panY: project.view.panY });
         applyImageTransform();
         addLog(`Importerade ${file.name}. Du kan fortsätta redigera och exportera kartan.`, "good");
+        document.getElementById("editImportNotice").hidden = true;
+        document.getElementById("importMapBtn").classList.remove("import-highlight");
+        document.getElementById("importMapBtn").removeAttribute("aria-describedby");
       } catch (error) {
         addLog(`Kunde inte importera fotokartan: ${error.message || error}`, "bad");
       }
@@ -3418,6 +3593,7 @@
 
     async function downloadStandaloneHtml() {
       const imagePhotos = computeDisplayPositions(state.photos);
+      const photoBounds = state.geotiff ? null : computeFallbackBounds(state.photos, state.geojson.polygons);
       const geojsonPaths = computeGeoJsonPaths();
       const downloadName = buildDownloadFileName(state.geotiffName, state.document.title);
       const payload = {
@@ -3438,8 +3614,11 @@
           html: sanitizeDocumentHtml(state.document.html)
         } : null,
         imagePhotos,
+        unplacedPhotos: getUnplacedPhotos(imagePhotos),
+        photoMapPoints: state.photos.map(photo => ({ id: photo.id,
+          point: getPhotoMapPoint(photo, photoBounds) })),
         photos: state.photos,
-        project: buildProject(imagePhotos, computeSpeciesPositions())
+        project: buildProject(computeSpeciesPositions())
       };
 
       const html = buildStandaloneImageHtml(payload);
@@ -3568,6 +3747,138 @@
         .trim();
     }
 
+    // Edits in an opened export update both the visible DOM and its project metadata.
+    function mountExportPhotoEditing(doc, openPhoto, closePhoto, showUndo) {
+      const deleted = [];
+      const rail = doc.getElementById("unplacedPhotos");
+      const projectNode = () => doc.getElementById("fotokarta-project");
+      const readProject = () => JSON.parse(projectNode().textContent);
+      const saveProject = project => { projectNode().textContent = JSON.stringify(project).replace(/</g, "\\u003c"); };
+      const overlay = doc.querySelector(".surface .overlay");
+      const aspect = Number(doc.querySelector(".surface").dataset.aspect) || 1;
+      const canPlace = marker => marker.dataset.mapLat !== undefined && marker.dataset.mapLon !== undefined
+        && Number.isFinite(Number(marker.dataset.mapLat)) && Number.isFinite(Number(marker.dataset.mapLon));
+      function positionMarkers() {
+        const groups = new Map();
+        overlay.querySelectorAll(".marker").forEach(marker => {
+          if (!canPlace(marker)) return;
+          const key = `${Number(marker.dataset.mapLat).toFixed(4)},${Number(marker.dataset.mapLon).toFixed(4)}`;
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(marker);
+        });
+        groups.forEach(group => group.forEach((marker, index) => {
+          const radius = group.length === 1 ? 0 : Math.min(0.035, 0.012 + group.length * 0.004);
+          const angle = Math.PI * 2 * index / group.length;
+          marker.style.left = `${(Number(marker.dataset.mapLon) + Math.cos(angle) * radius) / aspect * 100}%`;
+          marker.style.top = `${(1 - Number(marker.dataset.mapLat) - Math.sin(angle) * radius) * 100}%`;
+        }));
+      }
+      function moveMarker(marker, toOtherPhotos) {
+        if (!toOtherPhotos && !canPlace(marker)) return;
+        const project = readProject();
+        const photo = project.photos.find(photo => photo.id === marker.dataset.photoId);
+        if (!photo) return;
+        photo.inOtherPhotos = toOtherPhotos;
+        saveProject(project);
+        closePhoto();
+        marker.className = toOtherPhotos ? "unplaced-photo" : "marker";
+        const img = marker.querySelector("img");
+        marker.replaceChildren(img);
+        if (toOtherPhotos) {
+          let list = rail.querySelector(".unplaced-list");
+          if (!list) {
+            const heading = doc.createElement("h2");
+            list = doc.createElement("div");
+            list.className = "unplaced-list";
+            rail.append(heading, list);
+          }
+          marker.style.left = "";
+          marker.style.top = "";
+          const name = doc.createElement("span");
+          name.textContent = marker.dataset.name;
+          marker.appendChild(name);
+          list.appendChild(marker);
+        } else {
+          overlay.appendChild(marker);
+        }
+        updateCounts();
+      }
+      function updateCounts() {
+        positionMarkers();
+        const count = rail.querySelectorAll(".unplaced-photo").length;
+        rail.hidden = !count;
+        const heading = rail.querySelector("h2");
+        if (heading) heading.textContent = `Övriga bilder (${count})`;
+        const badge = doc.querySelector(".badge");
+        badge.textContent = `${badge.dataset.mapName} · ${doc.querySelectorAll(".surface .marker").length} på kartan, ${count} i Övriga bilder`;
+      }
+      function refreshUndo() {
+        const last = deleted.at(-1);
+        showUndo(doc, last ? `${last.marker.dataset.name} togs bort från fotokartan.` : "", () => {
+          const item = deleted.pop();
+          const project = readProject();
+          project.photos.splice(item.index, 0, item.photo);
+          saveProject(project);
+          item.parent.insertBefore(item.marker, item.next?.parentNode === item.parent ? item.next : null);
+          updateCounts();
+          refreshUndo();
+        });
+      }
+      rail.querySelectorAll(".unplaced-photo").forEach(marker => {
+        marker.addEventListener("click", event => {
+          event.stopPropagation();
+          closePhoto();
+          openPhoto(marker);
+        });
+      });
+      // Attach when a popup opens; all photos use the same viewer and title editor.
+      return (marker, popup) => {
+        doc.querySelectorAll(".marker.open, .unplaced-photo.open").forEach(open => open.classList.remove("open"));
+        marker.classList.add("open");
+        const title = popup.querySelector(".photo-title");
+        title.addEventListener("input", () => {
+          const project = readProject();
+          const photo = project.photos.find(photo => photo.id === marker.dataset.photoId);
+          if (photo) photo.title = title.value;
+          saveProject(project);
+        });
+        const inPanel = marker.classList.contains("unplaced-photo");
+        const move = doc.createElement("button");
+        move.type = "button";
+        move.className = "move-photo";
+        move.textContent = inPanel ? "Flytta till kartan" : "Flytta till Övriga bilder";
+        move.disabled = inPanel && !canPlace(marker);
+        move.addEventListener("click", event => {
+          event.stopPropagation();
+          moveMarker(marker, !inPanel);
+        });
+        popup.appendChild(move);
+        if (move.disabled) {
+          const reason = doc.createElement("small");
+          reason.textContent = "Bilden saknar GPS eller ligger utanför den aktuella kartan.";
+          popup.appendChild(reason);
+        }
+        const remove = doc.createElement("button");
+        remove.type = "button";
+        remove.className = "remove-photo";
+        remove.textContent = "Ta bort från fotokartan";
+        remove.addEventListener("click", event => {
+          event.stopPropagation();
+          const project = readProject();
+          const index = project.photos.findIndex(photo => photo.id === marker.dataset.photoId);
+          if (index < 0) return;
+          const [photo] = project.photos.splice(index, 1);
+          deleted.push({ photo, index, marker, parent: marker.parentNode, next: marker.nextSibling });
+          saveProject(project);
+          marker.remove();
+          closePhoto();
+          updateCounts();
+          refreshUndo();
+        });
+        popup.appendChild(remove);
+      };
+    }
+
     function buildStandaloneImageHtml(payload) {
       const doc = document.implementation.createHTMLDocument(payload.pageTitle || "Fotokarta");
       doc.documentElement.lang = "sv";
@@ -3642,6 +3953,7 @@
       stage.className = "stage";
       const surface = doc.createElement("div");
       surface.className = "surface";
+      surface.dataset.aspect = payload.imageAspect || 1.35;
       surface.style.setProperty("--marker-size", `${payload.markerSize || 56}px`);
       if (!payload.imageDataUrl) {
         surface.classList.add("no-map");
@@ -3669,7 +3981,22 @@
       const workspace = doc.createElement("section");
       workspace.className = "map-workspace";
       workspace.appendChild(stage);
-      doc.body.appendChild(workspace);
+      const photoWorkspace = doc.createElement("div");
+      photoWorkspace.className = "photo-workspace";
+      photoWorkspace.appendChild(workspace);
+      const unplaced = doc.createElement("aside");
+      unplaced.className = "unplaced-photos";
+      unplaced.id = "unplacedPhotos";
+      unplaced.setAttribute("aria-label", "Övriga bilder");
+      renderUnplacedPhotos(doc, unplaced, payload.unplacedPhotos || [], null);
+      photoWorkspace.appendChild(unplaced);
+      doc.body.appendChild(photoWorkspace);
+      const undoNotice = doc.createElement("div");
+      undoNotice.id = "photoUndo";
+      undoNotice.className = "photo-undo";
+      undoNotice.setAttribute("role", "status");
+      undoNotice.hidden = true;
+      doc.body.appendChild(undoNotice);
       const footer = doc.createElement("div");
       footer.className = "map-footer";
       workspace.appendChild(footer);
@@ -3749,36 +4076,53 @@
         marker.style.top = `${(1 - photo.displayLat) * 100}%`;
         marker.setAttribute("aria-label", photo.name);
         marker.dataset.fullsrc = photo.src;
+        marker.dataset.photoId = photo.id;
         marker.dataset.name = photo.name;
         marker.dataset.title = photo.title || "";
         marker.innerHTML = `<img src="${photo.thumb}" alt="">`;
         overlay.appendChild(marker);
       });
 
+      const pointsById = new Map((payload.photoMapPoints || []).map(item => [item.id, item.point]));
+      doc.querySelectorAll(".marker, .unplaced-photo").forEach(marker => {
+        const point = pointsById.get(marker.dataset.photoId);
+        if (point) {
+          marker.dataset.mapLat = point.lat;
+          marker.dataset.mapLon = point.lon;
+        }
+      });
       const badge = doc.createElement("div");
       badge.className = "badge";
-      badge.textContent = `${payload.geotiffName || "GPS-positioner"} · ${payload.imagePhotos.length} foton`;
+      badge.dataset.mapName = payload.geotiffName || "GPS-positioner";
+      badge.textContent = `${badge.dataset.mapName} · ${payload.imagePhotos.length} på kartan, ${(payload.unplacedPhotos || []).length} i Övriga bilder`;
       footer.appendChild(badge);
+      const editLink = doc.createElement("a");
+      editLink.className = "edit-map-link";
+      editLink.href = "https://fotokartgenerator.se/?redigera=1";
+      editLink.target = "_blank";
+      editLink.rel = "noopener noreferrer";
+      editLink.textContent = "Redigera fotokartan";
+      footer.appendChild(editLink);
 
       const zoomControls = doc.createElement("div");
       zoomControls.className = "zoom";
-      zoomControls.innerHTML = '<button type="button" class="square" id="out" title="Zooma ut" aria-label="Zooma ut">−</button><span class="value" id="value">100%</span><button type="button" class="square" id="in" title="Zooma in" aria-label="Zooma in">+</button><button type="button" id="fit" title="Passa in kartbilden">Passa</button>';
+      zoomControls.innerHTML = '<button type="button" class="square" id="out" title="Zooma ut" aria-label="Zooma ut">−</button><button type="button" class="square" id="in" title="Zooma in" aria-label="Zooma in">+</button><button type="button" id="fit" title="Visa hela kartan">Visa hela kartan</button>';
       workspace.appendChild(zoomControls);
 
       const script = doc.createElement("script");
       script.textContent = [
-        "var stage=document.querySelector('.stage'),surface=document.querySelector('.surface'),value=document.getElementById('value'),floatingPopup=document.getElementById('floatingPopup'),documentButton=document.getElementById('documentButton'),documentPreview=document.getElementById('documentPreview'),documentClose=document.getElementById('documentClose');",
-        `var view=Object.assign({zoom:1,panX:0,panY:0,dragging:false,dragStartX:0,dragStartY:0,startPanX:0,startPanY:0},${JSON.stringify(payload.project?.view || {})});`,
+        "var stage=document.querySelector('.stage'),surface=document.querySelector('.surface'),floatingPopup=document.getElementById('floatingPopup'),documentButton=document.getElementById('documentButton'),documentPreview=document.getElementById('documentPreview'),documentClose=document.getElementById('documentClose');",
+        "var view={zoom:1,panX:0,panY:0,dragging:false,dragStartX:0,dragStartY:0,startPanX:0,startPanY:0};",
         "function clamp(v,min,max){return Math.min(max,Math.max(min,v));}",
-        "function apply(){surface.style.transform='translate('+view.panX+'px, '+view.panY+'px) scale('+view.zoom+')';value.textContent=Math.round(view.zoom*100)+'%';}",
+        "function apply(){surface.style.transform='translate('+view.panX+'px, '+view.panY+'px) scale('+view.zoom+')';}",
         "function zoomAt(x,y,factor){var old=view.zoom,next=clamp(old*factor,.5,6);if(next===old)return;var rect=surface.getBoundingClientRect();var baseLeft=rect.left-view.panX,baseTop=rect.top-view.panY;var localX=(x-rect.left)/old,localY=(y-rect.top)/old;view.zoom=next;view.panX=x-baseLeft-localX*next;view.panY=y-baseTop-localY*next;apply();}",
         "function zoomCenter(factor){var rect=stage.getBoundingClientRect();zoomAt(rect.left+rect.width/2,rect.top+rect.height/2,factor);}",
         "function setPopupZoom(zoomWrap,scale,event){var img=zoomWrap.querySelector('img');if(!img)return;var old=Number(zoomWrap.dataset.scale||1),min=Number(zoomWrap.dataset.minScale||1),next=clamp(scale,min,5),rect=zoomWrap.getBoundingClientRect(),originX=event?event.clientX-rect.left:rect.width/2,originY=event?event.clientY-rect.top:rect.height/2,ratio=next/old;zoomWrap.dataset.scale=String(next);img.style.maxWidth='none';img.style.maxHeight='none';img.style.width=(next*100)+'%';img.style.height='auto';zoomWrap.scrollLeft=(zoomWrap.scrollLeft+originX)*ratio-originX;zoomWrap.scrollTop=(zoomWrap.scrollTop+originY)*ratio-originY;var value=floatingPopup.querySelector('.popup-zoom-value');if(value)value.textContent=Math.round(next*100)+'%';}",
         "function handlePopupWheel(event){event.preventDefault();event.stopPropagation();var zoomWrap=event.currentTarget,scale=Number(zoomWrap.dataset.scale||1);setPopupZoom(zoomWrap,scale*(event.deltaY<0?1.15:.87),event);}",
         "function handlePopupButton(event){event.stopPropagation();var zoomWrap=floatingPopup.querySelector('.zoom-wrap');if(!zoomWrap)return;var action=event.currentTarget.dataset.popupZoom,scale=Number(zoomWrap.dataset.scale||1);if(action==='in')setPopupZoom(zoomWrap,scale*1.25);if(action==='out')setPopupZoom(zoomWrap,scale*.8);if(action==='reset'){setPopupZoom(zoomWrap,1);zoomWrap.scrollLeft=0;zoomWrap.scrollTop=0;}}",
-        "function closeFloatingPopup(){floatingPopup.style.display='none';floatingPopup.innerHTML='';document.querySelectorAll('.marker.open').forEach(function(open){open.classList.remove('open');});}",
+        "function closeFloatingPopup(){floatingPopup.style.display='none';floatingPopup.innerHTML='';document.querySelectorAll('.marker.open, .unplaced-photo.open').forEach(function(open){open.classList.remove('open');});}",
         "function fitPopupImageToFrame(zoomWrap){var img=zoomWrap.querySelector('img');if(!img)return;img.style.maxWidth='none';img.style.maxHeight='none';img.style.height='auto';zoomWrap.dataset.scale='1';var rect=zoomWrap.getBoundingClientRect();if(!rect.width||!rect.height||!img.naturalWidth||!img.naturalHeight)return;var baseHeight=rect.width*(img.naturalHeight/img.naturalWidth),min=clamp(Math.max(1,rect.height/baseHeight),1,5);zoomWrap.dataset.minScale=String(min);setPopupZoom(zoomWrap,min);zoomWrap.scrollLeft=Math.max(0,(img.scrollWidth-zoomWrap.clientWidth)/2);zoomWrap.scrollTop=Math.max(0,(img.scrollHeight-zoomWrap.clientHeight)/2);}",
-        "function openFloatingPopup(marker){var fullsrc=marker.dataset.fullsrc,name=marker.dataset.name,title=marker.dataset.title||'',popup=floatingPopup;popup.innerHTML='<button type=\"button\" class=\"popup-close\" title=\"Stäng\" aria-label=\"Stäng\">×</button><div class=\"zoom-wrap\" data-scale=\"1\"><img alt=\"\"></div><div class=\"popup-tools\"><button type=\"button\" data-popup-zoom=\"out\" title=\"Zooma ut\">-</button><span class=\"popup-zoom-value\">100%</span><button type=\"button\" data-popup-zoom=\"in\" title=\"Zooma in\">+</button><button type=\"button\" data-popup-zoom=\"reset\" title=\"Återställ zoom\">100%</button></div><div class=\"popup-meta\"><b></b><input class=\"photo-title\" type=\"text\" placeholder=\"Titel\" aria-label=\"Titel\"></div>';var img=popup.querySelector('.zoom-wrap img'),input=popup.querySelector('.photo-title');img.src=fullsrc;img.alt=name;popup.querySelector('b').textContent=name;input.value=title;input.addEventListener('input',function(){marker.dataset.title=input.value;});var zoomWrap=popup.querySelector('.zoom-wrap');zoomWrap.addEventListener('wheel',handlePopupWheel,{passive:false});popup.querySelector('.popup-close').addEventListener('click',function(event){event.stopPropagation();closeFloatingPopup();});popup.style.display='flex';img.addEventListener('load',function(){fitPopupImageToFrame(zoomWrap);},{once:true});if(img.complete)fitPopupImageToFrame(zoomWrap);}",
+        "function openFloatingPopup(marker){var fullsrc=marker.dataset.fullsrc,name=marker.dataset.name,title=marker.dataset.title||'',popup=floatingPopup;popup.innerHTML='<button type=\"button\" class=\"popup-close\" title=\"Stäng\" aria-label=\"Stäng\">×</button><div class=\"zoom-wrap\" data-scale=\"1\"><img alt=\"\"></div><div class=\"popup-tools\"><button type=\"button\" data-popup-zoom=\"out\" title=\"Zooma ut\">-</button><span class=\"popup-zoom-value\">100%</span><button type=\"button\" data-popup-zoom=\"in\" title=\"Zooma in\">+</button><button type=\"button\" data-popup-zoom=\"reset\" title=\"Återställ zoom\">100%</button></div><div class=\"popup-meta\"><b></b><input class=\"photo-title\" type=\"text\" placeholder=\"Titel\" aria-label=\"Titel\"></div>';var img=popup.querySelector('.zoom-wrap img'),input=popup.querySelector('.photo-title');img.src=fullsrc;img.alt=name;popup.querySelector('b').textContent=name;input.value=title;input.addEventListener('input',function(){marker.dataset.title=input.value;});var zoomWrap=popup.querySelector('.zoom-wrap');zoomWrap.addEventListener('wheel',handlePopupWheel,{passive:false});popup.querySelector('.popup-close').addEventListener('click',function(event){event.stopPropagation();closeFloatingPopup();});popup.style.display='flex';img.addEventListener('load',function(){fitPopupImageToFrame(zoomWrap);},{once:true});if(img.complete)fitPopupImageToFrame(zoomWrap);attachPhotoActions(marker,popup);}",
         "stage.addEventListener('wheel',function(event){if(event.target.closest('.floating-popup'))return;event.preventDefault();zoomAt(event.clientX,event.clientY,event.deltaY<0?1.12:.89);},{passive:false});",
         "stage.addEventListener('pointerdown',function(event){if(event.button!==0||event.target.closest('.marker')||event.target.closest('.floating-popup'))return;view.dragging=true;view.dragStartX=event.clientX;view.dragStartY=event.clientY;view.startPanX=view.panX;view.startPanY=view.panY;stage.classList.add('dragging');stage.setPointerCapture(event.pointerId);});",
         "window.addEventListener('pointermove',function(event){if(!view.dragging)return;view.panX=view.startPanX+event.clientX-view.dragStartX;view.panY=view.startPanY+event.clientY-view.dragStartY;apply();});",
@@ -3789,10 +4133,11 @@
         "document.getElementById('fit').addEventListener('click',function(){view.zoom=1;view.panX=0;view.panY=0;apply();});",
         "if(documentButton&&documentPreview){documentButton.addEventListener('click',function(event){event.stopPropagation();documentPreview.classList.add('open');});}",
         "if(documentClose&&documentPreview){documentClose.addEventListener('click',function(event){event.stopPropagation();documentPreview.classList.remove('open');});}",
-        "document.querySelectorAll('.marker').forEach(function(marker){marker.addEventListener('click',function(event){event.stopPropagation();openFloatingPopup(marker);document.querySelectorAll('.marker.open').forEach(function(open){if(open!==marker)open.classList.remove('open');});marker.classList.add('open');});});",
-        "document.addEventListener('click',function(event){if(documentPreview&&!event.target.closest('.doc-preview')&&!event.target.closest('.doc-button'))documentPreview.classList.remove('open');if(!event.target.closest('.floating-popup')&&!event.target.closest('.marker')){floatingPopup.style.display='none';document.querySelectorAll('.marker.open').forEach(function(open){open.classList.remove('open');});}});",
+        "document.querySelectorAll('.marker').forEach(function(marker){marker.addEventListener('click',function(event){event.stopPropagation();openFloatingPopup(marker);document.querySelectorAll('.marker.open, .unplaced-photo.open').forEach(function(open){if(open!==marker)open.classList.remove('open');});marker.classList.add('open');});});",
+        "document.addEventListener('click',function(event){if(documentPreview&&!event.target.closest('.doc-preview')&&!event.target.closest('.doc-button'))documentPreview.classList.remove('open');if(!event.target.closest('.floating-popup')&&!event.target.closest('.marker')){floatingPopup.style.display='none';document.querySelectorAll('.marker.open, .unplaced-photo.open').forEach(function(open){open.classList.remove('open');});}});",
         "apply();",
-        `(${mountMapLayout.toString()})(stage,surface,document.getElementById('mapTextButtons'),document.querySelector('.zoom'));`
+        `(${mountMapLayout.toString()})(stage,surface,document.getElementById('mapTextButtons'),document.querySelector('.zoom'),view,apply);`,
+        `var attachPhotoActions = (${mountExportPhotoEditing.toString()})(document, openFloatingPopup, closeFloatingPopup, ${showPhotoUndo.toString()});`
       ].join("");
       doc.body.appendChild(script);
 
